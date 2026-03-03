@@ -1,0 +1,286 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
+#   However, in case of collaboration, if having platform-specific dependencies or dependencies
+#   having no cross-platform support, pipenv may install dependencies that don't work, or not
+#   install all needed dependencies.
+#Pipfile.lock
+
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# AI/ML Model Files
+*.pt
+*.pth
+*.h5
+*.hdf5
+*.pb
+*.onnx
+*.tflite
+*.ckpt
+*.pkl
+*.pickle
+*.joblib
+
+# Dataset Files
+datasets/
+data/
+videos/
+images/
+test_videos/
+train_videos/
+val_videos/
+
+# Temporary Files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Log Files
+logs/
+*.log
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+surveillance_system.db
+
+# Model Training Artifacts
+models/
+checkpoints/
+runs/
+wandb/
+mlruns/
+
+# Output Reports
+reports/
+output/
+results/
+
+# Configuration Files (keep .env.example)
+.env.local
+.env.production
+config.json
+
+# IDE Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Node.js (if any frontend integration)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# YOLO/Ultralytics specific
+yolov8n.pt
+yolov8s.pt
+yolov8m.pt
+yolov8l.pt
+yolov8x.pt
+*.runs/
+
+# OpenCV Haar Cascades (if custom trained)
+haarcascades/*.xml
+
+# Video Processing
+output_videos/
+anonymized_videos/
+processed_videos/
+
+# Privacy and Security
+privacy_logs/
+audit_logs/
+encryption_keys/
+
+# Performance Monitoring
+metrics/
+monitoring/
+profiling/
+
+# Backup Files
+backups/
+*.bak
+*.backup
+
+# Documentation Build
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# Testing
+test_videos/
+test_data/
+mock_data/
+
+# Development
+dev/
+experimental/
+prototype/
+
+# Cache
+.cache/
+cache/
+
+# Runtime
+runtime/
+*.pid
+
+# Surveillance System Specific
+detection_records/
+alert_logs/
+system_logs/
+training_history/
+privacy_reports/
+
+# Camera Feeds
+camera_feeds/
+live_streams/
+recorded_streams/
+
+# Analysis Results
+analysis_results/
+crime_detections/
+behavior_analysis/
+
+# Model Experiments
+experiments/
+hyperparameter_tuning/
+model_comparison/
+
+# External Data
+external_datasets/
+third_party_data/
