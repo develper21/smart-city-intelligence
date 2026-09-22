@@ -1,7 +1,10 @@
+import { useState } from "react";
 import { CameraFeedCard } from "@/components/dashboard/CameraFeedCard";
-import { mockCameras } from "@/data/mockData";
+import { CameraStreamModal } from "@/components/dashboard/CameraStreamModal";
+import { mockCameras, Camera } from "@/data/mockData";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -9,21 +12,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, Grid, List, Filter } from "lucide-react";
-import { useState } from "react";
+import {
+  Search,
+  Grid,
+  List,
+  Filter,
+  Video,
+  Cctv,
+  Maximize2,
+  RefreshCw,
+  LayoutGrid,
+  Sparkles,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-const LiveFeeds = () => {
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+export default function LiveFeeds() {
+  const [viewMode, setViewMode] = useState<"grid" | "list" | "wall">("grid");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [zoneFilter, setZoneFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCameraForStream, setSelectedCameraForStream] = useState<Camera | null>(null);
 
   const filteredCameras = mockCameras.filter((camera) => {
     const matchesStatus = statusFilter === "all" || camera.status === statusFilter;
+    const matchesZone = zoneFilter === "all" || camera.zone === zoneFilter;
     const matchesSearch =
       camera.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      camera.location.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
+      camera.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      camera.id.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesZone && matchesSearch;
   });
 
   return (
@@ -31,90 +49,222 @@ const LiveFeeds = () => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold">Live Feeds</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Monitor all camera feeds in real-time
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+              Live Surveillance Video Wall
+            </h1>
+            <Badge variant="outline" className="border-primary/40 text-primary font-mono text-xs">
+              4K RTSP / WebRTC
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1">
+            Real-time multi-angle optical feeds with neural anomaly tagging and PTZ actuators.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            {filteredCameras.length} cameras
-          </span>
+
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => toast.info("All camera RTSP stream connections re-verified")}
+            className="text-xs h-9"
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Sync Feeds
+          </Button>
+
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-mono font-medium text-emerald-400">
+              {filteredCameras.length} Cameras Streaming
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1 max-w-md">
+      {/* Filters and View Mode Controls */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search cameras..."
+            placeholder="Search by camera name, ID (e.g. CAM-001), or sector location..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="pl-9 h-10 bg-secondary/40 text-xs sm:text-sm"
           />
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex gap-2 flex-wrap items-center">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]">
-              <Filter className="h-4 w-4 mr-2" />
+            <SelectTrigger className="w-[130px] h-10 text-xs bg-secondary/40">
+              <Filter className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
               <SelectValue placeholder="Status" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="glass-card text-xs">
               <SelectItem value="all">All Status</SelectItem>
               <SelectItem value="online">Online</SelectItem>
               <SelectItem value="offline">Offline</SelectItem>
               <SelectItem value="warning">Warning</SelectItem>
             </SelectContent>
           </Select>
-          <div className="flex rounded-lg border border-border overflow-hidden">
+
+          <Select value={zoneFilter} onValueChange={setZoneFilter}>
+            <SelectTrigger className="w-[130px] h-10 text-xs bg-secondary/40">
+              <SelectValue placeholder="Zone" />
+            </SelectTrigger>
+            <SelectContent className="glass-card text-xs">
+              <SelectItem value="all">All Zones</SelectItem>
+              <SelectItem value="Zone A">Zone A (North)</SelectItem>
+              <SelectItem value="Zone B">Zone B (Central)</SelectItem>
+              <SelectItem value="Zone C">Zone C (Highway)</SelectItem>
+              <SelectItem value="Zone D">Zone D (Industrial)</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Layout Toggle */}
+          <div className="flex rounded-xl border border-border/70 overflow-hidden bg-secondary/40 p-0.5">
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               className={cn(
-                "rounded-none h-10",
-                viewMode === "grid" && "bg-primary text-primary-foreground"
+                "h-8 px-2.5 rounded-lg text-xs",
+                viewMode === "grid" && "bg-primary text-primary-foreground font-semibold"
               )}
               onClick={() => setViewMode("grid")}
+              title="Standard Grid"
             >
-              <Grid className="h-4 w-4" />
+              <Grid className="h-3.5 w-3.5" />
             </Button>
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               className={cn(
-                "rounded-none h-10",
-                viewMode === "list" && "bg-primary text-primary-foreground"
+                "h-8 px-2.5 rounded-lg text-xs",
+                viewMode === "wall" && "bg-primary text-primary-foreground font-semibold"
+              )}
+              onClick={() => setViewMode("wall")}
+              title="Matrix Wall Mode"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 px-2.5 rounded-lg text-xs",
+                viewMode === "list" && "bg-primary text-primary-foreground font-semibold"
               )}
               onClick={() => setViewMode("list")}
+              title="List View"
             >
-              <List className="h-4 w-4" />
+              <List className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Camera Grid */}
-      <div
-        className={cn(
-          "grid gap-4",
-          viewMode === "grid"
-            ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-            : "grid-cols-1"
-        )}
-      >
-        {filteredCameras.map((camera) => (
-          <CameraFeedCard key={camera.id} camera={camera} />
-        ))}
-      </div>
-
-      {filteredCameras.length === 0 && (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground">No cameras found matching your criteria.</p>
+      {/* Camera Feeds Content */}
+      {viewMode === "grid" && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredCameras.map((camera) => (
+            <CameraFeedCard
+              key={camera.id}
+              camera={camera}
+              onExpand={(c) => setSelectedCameraForStream(c)}
+            />
+          ))}
         </div>
       )}
+
+      {viewMode === "wall" && (
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3">
+          {filteredCameras.map((camera) => (
+            <div
+              key={camera.id}
+              onClick={() => setSelectedCameraForStream(camera)}
+              className="relative aspect-video rounded-xl overflow-hidden bg-black border border-border/70 group cursor-pointer hover:border-primary/80 transition-all shadow-md"
+            >
+              <img
+                src={camera.thumbnail}
+                alt={camera.name}
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+              />
+              <div className="absolute inset-0 scanlines opacity-20" />
+              <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-background/80 backdrop-blur-md px-1.5 py-0.5 rounded text-[10px] font-mono">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>{camera.id}</span>
+              </div>
+              <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[10px] bg-background/80 backdrop-blur-md px-2 py-0.5 rounded">
+                <span className="truncate font-medium">{camera.name}</span>
+                <span className="font-mono text-muted-foreground">{camera.zone}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {viewMode === "list" && (
+        <div className="space-y-3">
+          {filteredCameras.map((camera) => (
+            <div
+              key={camera.id}
+              onClick={() => setSelectedCameraForStream(camera)}
+              className="p-3.5 rounded-xl glass-card flex items-center justify-between gap-4 cursor-pointer hover:border-primary/50 transition-all"
+            >
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-24 h-16 rounded-lg overflow-hidden bg-black relative shrink-0">
+                  <img src={camera.thumbnail} alt={camera.name} className="w-full h-full object-cover" />
+                  <div className="absolute top-1 left-1">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 block animate-pulse" />
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-foreground truncate">{camera.name}</h3>
+                    <Badge variant="outline" className="font-mono text-[10px]">
+                      {camera.id}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">{camera.location}</p>
+                  <p className="text-[11px] text-muted-foreground font-mono mt-1">
+                    Zone: {camera.zone} • Last Ping: {camera.lastUpdated}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Badge
+                  variant={camera.status === "online" ? "default" : "secondary"}
+                  className="font-mono text-xs uppercase"
+                >
+                  {camera.status}
+                </Badge>
+                <Button size="sm" variant="outline" className="text-xs h-8">
+                  <Maximize2 className="h-3.5 w-3.5 mr-1" />
+                  PTZ Stream
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {filteredCameras.length === 0 && (
+        <div className="p-12 text-center rounded-2xl border border-dashed border-border/70 glass-card">
+          <Cctv className="h-10 w-10 text-muted-foreground/40 mx-auto mb-2" />
+          <p className="font-semibold text-sm">No Cameras Match Search Filter</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Try adjusting your search keywords, status filter, or sector zone.
+          </p>
+        </div>
+      )}
+
+      {/* Embedded Camera Stream Modal */}
+      <CameraStreamModal
+        camera={selectedCameraForStream}
+        isOpen={!!selectedCameraForStream}
+        onClose={() => setSelectedCameraForStream(null)}
+      />
     </div>
   );
-};
-
-export default LiveFeeds;
+}
