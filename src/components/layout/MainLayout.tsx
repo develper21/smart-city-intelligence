@@ -8,7 +8,7 @@ import { CommandMenu } from "@/components/dashboard/CommandMenu";
 import { AlertDetailsModal } from "@/components/dashboard/AlertDetailsModal";
 import { CameraStreamModal } from "@/components/dashboard/CameraStreamModal";
 import { useNotifications } from "@/contexts/NotificationContext";
-import { Alert, Camera } from "@/data/mockData";
+import { Alert, Camera } from "@/services/api";
 
 export function MainLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
