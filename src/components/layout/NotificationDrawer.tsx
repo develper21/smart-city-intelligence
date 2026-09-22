@@ -26,9 +26,10 @@ import {
   Filter,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Alert } from "@/services/api";
 
 interface NotificationDrawerProps {
-  onInspectAlert: (alert: any) => void;
+  onInspectAlert: (alert: Alert) => void;
 }
 
 export function NotificationDrawer({ onInspectAlert }: NotificationDrawerProps) {
