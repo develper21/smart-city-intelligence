@@ -1,418 +1,459 @@
-import axios from 'axios';
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
 
-const API_BASE_URL = 'http://localhost:8000';
+/* Backend base URL — VITE_API_URL set karke override kar sakte hain */
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_PREFIX = "/api";
+const TOKEN_KEY = "civic-ai-access-token";
+const REFRESH_KEY = "civic-ai-refresh-token";
 
-const api = axios.create({
-  baseURL: API_BASE_URL,
+export const getAccessToken = () => localStorage.getItem(TOKEN_KEY);
+export const getRefreshToken = () => localStorage.getItem(REFRESH_KEY);
+export const setTokens = (access: string, refresh?: string) => {
+  localStorage.setItem(TOKEN_KEY, access);
+  if (refresh) localStorage.setItem(REFRESH_KEY, refresh);
+};
+export const clearTokens = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(REFRESH_KEY);
+};
+
+export const api = axios.create({
+  baseURL: `${API_BASE_URL}${API_PREFIX}`,
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { "Content-Type": "application/json" },
 });
 
-// Types for API responses
-export interface Alert {
-  id: number;
-  event_type: string;
-  risk_level: string;
-  message: string;
-  alert_time: string;
-  acknowledged: boolean;
-  acknowledged_by?: string;
-  acknowledged_time?: string;
+/* ---------- JWT injection + single-flight refresh on 401 ---------- */
+let refreshPromise: Promise<boolean> | null = null;
+
+export async function tryRefresh(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+  if (!refreshPromise) {
+    refreshPromise = axios
+      .post(`${API_BASE_URL}${API_PREFIX}/auth/refresh`, { refresh_token: refreshToken })
+      .then((res) => {
+        setTokens(res.data.access_token);
+        return true;
+      })
+      .catch(() => {
+        clearTokens();
+        return false;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
 }
+
+api.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+api.interceptors.response.use(
+  (r) => r,
+  async (error: AxiosError) => {
+    const original = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
+    const status = error.response?.status;
+    const isAuthCall = original?.url?.includes("/auth/login") || original?.url?.includes("/auth/register");
+    if (status === 401 && original && !original._retry && !isAuthCall) {
+      original._retry = true;
+      const refreshed = await tryRefresh();
+      if (refreshed && original.headers) {
+        original.headers.Authorization = `Bearer ${getAccessToken()}`;
+        return api(original);
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const wsUrl = `${API_BASE_URL.replace(/^http/, "ws")}/ws`;
+
+/* ================= Types (frontend UI shapes) ================= */
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+export type AlertStatus = "active" | "resolved" | "investigating";
 
 export interface Camera {
-  id: number;
-  camera_id: string;
+  id: string;
   name: string;
   location: string;
-  status: 'online' | 'offline' | 'warning';
+  status: "online" | "offline" | "warning";
   zone: string;
-  rtsp_url?: string;
-  thumbnail_path?: string;
-  created_at: string;
-  updated_at: string;
+  lastUpdated: string;
+  thumbnail: string;
 }
 
-export interface SystemStatus {
-  status: string;
-  model_loaded: boolean;
-  active_connections: number;
+export interface Alert {
+  id: string;
+  type: "intrusion" | "violence" | "unattended" | "crowd" | "traffic" | "fire";
+  location: string;
+  cameraId: string;
+  riskLevel: RiskLevel;
   timestamp: string;
-  metrics: {
-    is_running: boolean;
-    active_streams: number;
-    frames_processed: number;
-    alerts_generated: number;
-    avg_processing_time: number;
-    fps: number;
-    uptime_seconds: number;
-  };
-  streams: Record<string, {
-    source: string;
-    location: string;
-    frame_count: number;
-    fps: number;
-    last_alert_time: number;
-    is_active: boolean;
-  }>;
+  description: string;
+  status: AlertStatus;
+  confidence?: number;
+  numericId?: number;
 }
 
-export interface Analytics {
-  statistics: {
-    total_detections: number;
-    critical_alerts: number;
-    crime_type_distribution: Record<string, number>;
-  };
-  metrics: SystemStatus['metrics'];
-  timestamp: string;
+export interface MapPin {
+  id: string;
+  lat: number;
+  lng: number;
+  type: Alert["type"];
+  riskLevel: Alert["riskLevel"];
+  location: string;
 }
 
-export interface VideoAnalysisResult {
-  status: string;
-  total_frames?: number;
-  alerts_detected?: number;
-  alerts?: Array<{
-    timestamp: string;
-    event_type: string;
-    risk_level: string;
-    confidence: number;
-    description: string;
-    location: string;
-  }>;
-  error?: string;
+export interface Operator {
+  id: string;
+  name: string;
+  role: string;
+  status: "online" | "offline" | "busy" | "on_break";
+  zone: string;
+  alerts: number;
+  lastActive: string;
+  avatar?: string | null;
+  department?: string;
 }
 
-// Authentication types
-export interface AuthResponse {
+export interface BackendUser {
+  id: number;
+  username: string;
+  email: string;
+  name: string;
+  role: string;
+  permissions: string[];
+  badge?: string;
+  department?: string;
+  zone?: string;
+  is_active: boolean;
+}
+
+export interface AuthPayload {
   access_token: string;
   refresh_token: string;
   token_type: string;
   expires_in: number;
-  user: {
-    id: number;
-    username: string;
-    email: string;
-    role: string;
-    permissions: string[];
+  user: BackendUser;
+}
+
+/* ================= Mappers: backend rows → UI shapes ================= */
+/* eslint-disable @typescript-eslint/no-explicit-any -- backend JSON rows are untyped at the boundary */
+type Raw = Record<string, any>;
+
+export function mapCamera(c: Raw): Camera {
+  return {
+    id: c.camera_id ?? `CAM-${c.id}`,
+    name: c.name ?? "Camera",
+    location: c.location ?? "Unknown",
+    status: (["online", "offline", "warning"].includes(c.status) ? c.status : "online") as Camera["status"],
+    zone: c.zone ?? "Zone A",
+    lastUpdated: c.updated_at ? timeAgo(c.updated_at) : "Just now",
+    thumbnail:
+      c.thumbnail_path ||
+      "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=400&h=250&fit=crop",
   };
 }
 
-export interface User {
-  id: number;
-  username: string;
-  email: string;
-  role: string;
-  permissions: string[];
-  is_active: boolean;
-  last_login?: string;
+export function mapAlert(a: Raw): Alert {
+  const status: AlertStatus =
+    a.status === "resolved" ? "resolved" : a.status === "investigating" ? "investigating" : "active";
+  return {
+    id: a.event_ref || `ALT-${String(a.id).padStart(3, "0")}`,
+    numericId: a.id,
+    type: (["intrusion", "violence", "unattended", "crowd", "traffic", "fire"].includes(a.event_type)
+      ? a.event_type
+      : "intrusion") as Alert["type"],
+    location: a.location ?? "Unknown",
+    cameraId: a.camera_id ?? "CAM-001",
+    riskLevel: (["low", "medium", "high", "critical"].includes(a.risk_level) ? a.risk_level : "medium") as RiskLevel,
+    timestamp: a.alert_time ?? new Date().toISOString(),
+    description: a.message ?? "Anomalous event flagged by neural engine.",
+    status,
+    confidence: a.confidence,
+  };
 }
 
-// API Functions
+export function mapOperator(o: Raw): Operator {
+  return {
+    id: o.badge ?? `OP-${o.id}`,
+    name: o.name ?? "Operator",
+    role: o.role ?? "Operator",
+    status: o.status === "on_break" ? "busy" : o.status,
+    zone: o.zone ?? "All City Sectors",
+    alerts: o.alerts_handled ?? 0,
+    lastActive: timeAgo(o.last_active ?? new Date().toISOString()),
+    avatar: o.avatar,
+    department: o.department,
+  };
+}
+
+export function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "Just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} hour${h > 1 ? "s" : ""} ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d > 1 ? "s" : ""} ago`;
+}
+
+/* ================= API functions ================= */
 export const surveillanceAPI = {
-  // System Status
-  async getSystemStatus(): Promise<SystemStatus> {
-    const response = await api.get('/system-status');
-    return response.data;
+  /* ---- Auth ---- */
+  async login(identifier: string, password: string): Promise<AuthPayload> {
+    const body: Record<string, string> = { password };
+    if (identifier.includes("@")) body.email = identifier;
+    else body.username = identifier;
+    const { data } = await api.post<AuthPayload>("/auth/login", body);
+    setTokens(data.access_token, data.refresh_token);
+    return data;
   },
 
-  // Alerts
-  async getAlerts(
-    limit: number = 10,
-    riskLevel?: string,
-    eventType?: string,
-    status?: string,
-    acknowledged?: boolean
-  ): Promise<{ alerts: Alert[]; total: number }> {
-    const params = new URLSearchParams();
-    params.append('limit', limit.toString());
-    if (riskLevel) params.append('risk_level', riskLevel);
-    if (eventType) params.append('event_type', eventType);
-    if (status) params.append('status', status);
-    if (acknowledged !== undefined) params.append('acknowledged', acknowledged.toString());
-    
-    const response = await api.get(`/alerts?${params.toString()}`);
-    return response.data;
+  async register(payload: {
+    username: string;
+    email: string;
+    password: string;
+    name?: string;
+    role?: string;
+    department?: string;
+    zone?: string;
+    badge?: string;
+  }): Promise<{ message: string; user: BackendUser }> {
+    const { data } = await api.post("/auth/register", payload);
+    return data;
   },
 
-  async getAlert(alertId: number): Promise<Alert> {
-    const response = await api.get(`/alerts/${alertId}`);
-    return response.data;
+  async getMe(): Promise<BackendUser> {
+    const { data } = await api.get("/auth/me");
+    return data;
   },
 
-  async acknowledgeAlert(alertId: number, acknowledgedBy: string): Promise<{ message: string }> {
-    const response = await api.put(`/alerts/${alertId}/acknowledge`, null, {
-      params: { acknowledged_by: acknowledgedBy }
+  async logout() {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      /* stateless logout — ignore */
+    }
+    clearTokens();
+  },
+
+  /* ---- System ---- */
+  async getSystemStatus() {
+    const { data } = await api.get("/system-status");
+    return data;
+  },
+
+  /* ---- Alerts ---- */
+  async getAlerts(params?: {
+    limit?: number;
+    offset?: number;
+    risk_level?: string;
+    event_type?: string;
+    status?: string;
+    camera_id?: string;
+  }): Promise<{ alerts: Alert[]; total: number }> {
+    const qs = new URLSearchParams();
+    if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+    if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+    if (params?.risk_level && params.risk_level !== "all") qs.set("risk_level", params.risk_level);
+    if (params?.event_type && params.event_type !== "all") qs.set("event_type", params.event_type);
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.camera_id) qs.set("camera_id", params.camera_id);
+    const { data } = await api.get(`/alerts?${qs.toString()}`);
+    return { alerts: (data.alerts || []).map(mapAlert), total: data.total ?? 0 };
+  },
+
+  async acknowledgeAlert(numericId: number, by: string) {
+    const { data } = await api.put(`/alerts/${numericId}/acknowledge`, null, {
+      params: { acknowledged_by: by },
     });
-    return response.data;
+    return data;
   },
 
-  async resolveAlert(alertId: number, acknowledgedBy: string): Promise<{ message: string }> {
-    const response = await api.put(`/alerts/${alertId}/resolve`, null, {
-      params: { acknowledged_by: acknowledgedBy }
+  async resolveAlert(numericId: number, by: string) {
+    const { data } = await api.put(`/alerts/${numericId}/resolve`, null, {
+      params: { acknowledged_by: by },
     });
-    return response.data;
+    return data;
   },
 
-  async bulkResolveAlerts(alertIds: number[], acknowledgedBy: string): Promise<{ message: string; count: number }> {
-    const response = await api.post('/alerts/bulk-resolve', { alert_ids: alertIds }, {
-      params: { acknowledged_by: acknowledgedBy }
+  async bulkResolveAlerts(numericIds: number[], by: string) {
+    const { data } = await api.post(`/alerts/bulk-resolve?acknowledged_by=${encodeURIComponent(by)}`, {
+      alert_ids: numericIds,
     });
-    return response.data;
+    return data;
   },
 
-  // Cameras
-  async getCameras(status?: string, zone?: string): Promise<Camera[]> {
-    const params = new URLSearchParams();
-    if (status) params.append('status', status);
-    if (zone) params.append('zone', zone);
-    
-    const response = await api.get(`/cameras?${params.toString()}`);
-    return response.data;
+  async raiseAlert(payload: {
+    event_type: string;
+    message: string;
+    camera_id?: string;
+    location?: string;
+    risk_level?: string;
+  }) {
+    const { data } = await api.post("/alerts", payload);
+    return mapAlert(data);
   },
 
-  async getCamera(cameraId: number): Promise<Camera> {
-    const response = await api.get(`/cameras/${cameraId}`);
-    return response.data;
+  /* ---- Cameras ---- */
+  async getCameras(params?: { status?: string; zone?: string }): Promise<Camera[]> {
+    const qs = new URLSearchParams();
+    if (params?.status && params.status !== "all") qs.set("status", params.status);
+    if (params?.zone && params.zone !== "all") qs.set("zone", params.zone);
+    const { data } = await api.get(`/cameras?${qs.toString()}`);
+    return (Array.isArray(data) ? data : []).map(mapCamera);
   },
 
-  async getCameraByCameraId(cameraIdStr: string): Promise<Camera> {
-    const response = await api.get(`/cameras/by-id/${cameraIdStr}`);
-    return response.data;
-  },
-
-  async createCamera(cameraData: {
+  async createCamera(payload: {
     camera_id: string;
     name: string;
     location: string;
     zone: string;
     rtsp_url?: string;
-    ptz_config?: object;
-  }): Promise<Camera> {
-    const response = await api.post('/cameras', cameraData);
-    return response.data;
+  }) {
+    const { data } = await api.post("/cameras", payload);
+    return mapCamera(data);
   },
 
-  async updateCamera(cameraId: number, cameraData: Partial<Camera>): Promise<Camera> {
-    const response = await api.put(`/cameras/${cameraId}`, cameraData);
-    return response.data;
+  async deleteCamera(id: number) {
+    const { data } = await api.delete(`/cameras/${id}`);
+    return data;
   },
 
-  async deleteCamera(cameraId: number): Promise<{ message: string }> {
-    const response = await api.delete(`/cameras/${cameraId}`);
-    return response.data;
+  async controlPTZ(id: number, ptz: { pan?: number; tilt?: number; zoom?: number }) {
+    const { data } = await api.post(`/cameras/${id}/ptz`, ptz);
+    return data;
   },
 
-  async controlCameraPTZ(cameraId: number, ptz: { pan?: number; tilt?: number; zoom?: number }): Promise<{ message: string; ptz_config: object }> {
-    const response = await api.post(`/cameras/${cameraId}/ptz`, ptz);
-    return response.data;
+  /* ---- Analytics ---- */
+  async getSummary() {
+    const { data } = await api.get("/analytics/summary");
+    return data;
   },
 
-  // Analytics
-  async getAnalytics(): Promise<Analytics> {
-    const response = await api.get('/analytics');
-    return response.data;
+  async getIncidentsOverTime(days = 7): Promise<{ date: string; incidents: number; resolved: number }[]> {
+    const { data } = await api.get(`/analytics/incidents-over-time?days=${days}`);
+    return data.data ?? [];
   },
 
-  async getAnalyticsSummary(): Promise<{
-    total_incidents: number;
-    resolution_rate: number;
-    avg_response_time: string;
-    detection_accuracy: string;
-    system_uptime: number;
-    camera_coverage: number;
-    alert_processing: number;
-    timestamp: string;
-  }> {
-    const response = await api.get('/analytics/summary');
-    return response.data;
+  async getAlertTypes(): Promise<{ type: string; count: number; color: string }[]> {
+    const { data } = await api.get("/analytics/alert-types");
+    return data.data ?? [];
   },
 
-  async getIncidentsOverTime(days: number = 7): Promise<{ data: Array<{ date: string; incidents: number; resolved: number }>; period_days: number }> {
-    const response = await api.get(`/analytics/incidents-over-time?days=${days}`);
-    return response.data;
+  async getHourlyActivity(): Promise<{ hour: string; incidents: number }[]> {
+    const { data } = await api.get("/analytics/hourly-activity");
+    return data.data ?? [];
   },
 
-  async getAlertTypesDistribution(): Promise<{ data: Array<{ type: string; count: number; color: string }> }> {
-    const response = await api.get('/analytics/alert-types');
-    return response.data;
+  async getResolutionStatus(): Promise<{ status: string; count: number; percentage: number }[]> {
+    const { data } = await api.get("/analytics/resolution-status");
+    return data.data ?? [];
   },
 
-  async getHourlyActivity(): Promise<{ data: Array<{ hour: string; incidents: number }> }> {
-    const response = await api.get('/analytics/hourly-activity');
-    return response.data;
+  async getPerformance() {
+    const { data } = await api.get("/analytics/performance");
+    return data;
   },
 
-  async getResolutionStatus(): Promise<{ data: Array<{ status: string; count: number; percentage: number }> }> {
-    const response = await api.get('/analytics/resolution-status');
-    return response.data;
+  async getMapPins(): Promise<MapPin[]> {
+    const { data } = await api.get("/analytics/map-pins");
+    return (data.pins ?? []).map((p: Raw): MapPin => ({
+      id: String(p.id),
+      lat: Number(p.lat) || 28.6139,
+      lng: Number(p.lng) || 77.209,
+      type: (["intrusion", "violence", "unattended", "crowd", "traffic", "fire"].includes(p.type)
+        ? p.type
+        : "intrusion") as MapPin["type"],
+      riskLevel: (["low", "medium", "high", "critical"].includes(p.riskLevel) ? p.riskLevel : "medium") as RiskLevel,
+      location: p.location ?? "Unknown",
+    }));
   },
 
-  async getPerformanceMetrics(): Promise<{
-    system_uptime: number;
-    camera_coverage: number;
-    alert_processing: number;
-    fps: number;
-    avg_processing_time: number;
-    frames_processed: number;
-    uptime_seconds: number;
-    timestamp: string;
-  }> {
-    const response = await api.get('/analytics/performance');
-    return response.data;
+  /* ---- Operators ---- */
+  async getOperators(): Promise<Operator[]> {
+    const { data } = await api.get("/analytics/operators");
+    return (Array.isArray(data) ? data : []).map(mapOperator);
   },
 
-  // Video Analysis
-  async analyzeVideo(file: File): Promise<VideoAnalysisResult> {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    const response = await api.post('/analyze-video', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
-    return response.data;
+  /* ---- Settings ---- */
+  async getSettings() {
+    const { data } = await api.get("/settings");
+    return data;
   },
 
-  // Stream Management
-  async startStream(streamId: string, source: string, location?: string): Promise<{ success: boolean; message: string }> {
-    const response = await api.post('/start-stream', null, {
-      params: { stream_id: streamId, source, location: location || 'Unknown' }
-    });
-    return response.data;
-  },
-
-  async stopStream(streamId: string): Promise<{ success: boolean; message: string }> {
-    const response = await api.post('/stop-stream', null, {
-      params: { stream_id: streamId }
-    });
-    return response.data;
-  },
-
-  async getStreams(): Promise<{ streams: SystemStatus['streams']; total: number }> {
-    const response = await api.get('/streams');
-    return response.data;
-  },
-
-  // Authentication
-  async register(username: string, email: string, password: string, role: string = 'viewer'): Promise<{ message: string; user: { id: number; username: string; email: string; role: string } }> {
-    const response = await api.post('/auth/register', { username, email, password, role });
-    return response.data;
-  },
-
-  async login(username: string, password: string): Promise<AuthResponse> {
-    const response = await api.post('/auth/login', { username, password });
-    return response.data;
-  },
-
-  async refreshToken(refreshToken: string): Promise<{ access_token: string; token_type: string; expires_in: number }> {
-    const response = await api.post('/auth/refresh', { refresh_token: refreshToken });
-    return response.data;
-  },
-
-  async logout(refreshToken: string): Promise<{ message: string }> {
-    const response = await api.post('/auth/logout', { refresh_token: refreshToken });
-    return response.data;
-  },
-
-  async getCurrentUser(token: string): Promise<User> {
-    const response = await api.get('/auth/me', {
-      params: { token }
-    });
-    return response.data;
+  async updateSettings(patch: object) {
+    const { data } = await api.put("/settings", patch);
+    return data;
   },
 };
 
-// WebSocket connection for real-time updates
+/* ================= WebSocket manager ================= */
+export type WsMessage = { type: string; payload?: any; timestamp?: string };
+
 export class WebSocketManager {
   private ws: WebSocket | null = null;
+  private listeners = new Set<(msg: WsMessage) => void>();
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
+  private maxReconnectAttempts = 8;
+  private reconnectDelay = 1500;
+  private closedByUser = false;
 
-  connect(onMessage: (data: any) => void) {
+  connect() {
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
+    this.closedByUser = false;
     try {
-      this.ws = new WebSocket(`${API_BASE_URL}/ws`);
-
+      this.ws = new WebSocket(wsUrl);
       this.ws.onopen = () => {
-        console.log('WebSocket connected');
         this.reconnectAttempts = 0;
+        this.listeners.forEach((l) => l({ type: "system_status", payload: { status: "connected" } }));
       };
-
       this.ws.onmessage = (event) => {
         try {
-          const data = JSON.parse(event.data);
-          onMessage(data);
-        } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          const data = JSON.parse(event.data) as WsMessage;
+          this.listeners.forEach((l) => l(data));
+        } catch {
+          /* ignore malformed frames */
         }
       };
-
       this.ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        this.attemptReconnect(onMessage);
+        if (!this.closedByUser) this.attemptReconnect();
       };
-
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-      };
-
-    } catch (error) {
-      console.error('Failed to connect WebSocket:', error);
-      this.attemptReconnect(onMessage);
+      this.ws.onerror = () => this.ws?.close();
+    } catch {
+      this.attemptReconnect();
     }
   }
 
-  private attemptReconnect(onMessage: (data: any) => void) {
-    if (this.reconnectAttempts < this.maxReconnectAttempts) {
-      this.reconnectAttempts++;
-      console.log(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
-      
-      setTimeout(() => {
-        this.connect(onMessage);
-      }, this.reconnectDelay * this.reconnectAttempts);
-    }
+  private attemptReconnect() {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
+    this.reconnectAttempts++;
+    setTimeout(() => this.connect(), this.reconnectDelay * this.reconnectAttempts);
   }
 
   disconnect() {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    this.closedByUser = true;
+    this.ws?.close();
+    this.ws = null;
   }
 
-  send(data: any) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data));
-    }
+  on(listener: (msg: WsMessage) => void) {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  get isConnected() {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 }
 
-// Export singleton instance
 export const wsManager = new WebSocketManager();
-
-// Error handling
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error('API Error:', error);
-    
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Request timeout. Please try again.');
-    }
-    
-    if (error.response?.status === 500) {
-      throw new Error('Server error. Please try again later.');
-    }
-    
-    if (error.response?.status === 404) {
-      throw new Error('Resource not found.');
-    }
-    
-    throw error;
-  }
-);
 
 export default surveillanceAPI;
