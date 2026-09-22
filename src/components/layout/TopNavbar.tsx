@@ -3,15 +3,10 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Bell,
   Search,
-  Sun,
-  Moon,
   Shield,
   Menu,
-  Globe,
   LogOut,
-  User,
   Settings,
-  Radio,
   Command,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,7 +20,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotifications } from "@/contexts/NotificationContext";
 import { toast } from "sonner";
@@ -36,7 +30,6 @@ interface TopNavbarProps {
 }
 
 export function TopNavbar({ onMenuToggle, onOpenCommandMenu }: TopNavbarProps) {
-  const { theme, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { unreadCount, setIsDrawerOpen } = useNotifications();
   const navigate = useNavigate();
@@ -126,17 +119,6 @@ export function TopNavbar({ onMenuToggle, onOpenCommandMenu }: TopNavbarProps) {
                 {unreadCount}
               </Badge>
             )}
-          </Button>
-
-          {/* Theme Toggle */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            className="h-9 w-9 hover:bg-secondary transition-transform hover:rotate-12"
-            title="Toggle theme"
-          >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
 
           {/* User Profile Dropdown */}
