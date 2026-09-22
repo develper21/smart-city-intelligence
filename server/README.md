@@ -115,7 +115,11 @@ Heartbeat (30s ping/pong) dead connections prune karta hai.
 
 ## Data Persistence
 
-`server/data/` me JSON files (`users`, `cameras`, `alerts`, `events`, `operators`, `settings`) — writes debounced aur atomic (tmp + rename). Fresh start ke liye folder delete kar dein, seeds phir ban jayenge. `events` collection aaj native alert data se derive hota hai; seed me mockData-aligned history milti hai.
+`server/data/` me JSON files (`users`, `cameras`, `alerts`, `operators`, `settings`) — writes debounced aur atomic (tmp + rename). Fresh start ke liye folder delete kar dein, seeds phir ban jayenge.
+
+### Seed Data (Single Source of Truth)
+
+Pura demo dataset **`server/src/seedData.js`** me likha hai — users, cameras, alerts, operators, settings sab. Frontend ka dikahawa data badalna ho to bas is file ko edit karein aur `server/data/` folder delete karke server restart karein; naya DB inhi seeds se ban jayega. Timestamps `hoursAgo()` se relative hain, isliye demo data hamesha fresh rehta hai (7/30-day analytics charts bhare rehte hain).
 
 ## Production Notes
 
