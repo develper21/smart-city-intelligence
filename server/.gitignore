@@ -2,5 +2,7 @@ node_modules/
 data/
 uploads/
 .env
+.env.local
+.env.production
 *.log
 nohup.out
