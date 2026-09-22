@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, OperatorUser } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,27 +37,33 @@ export default function Signup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) {
+    if (!name || !email || !password) {
       toast.error("Please fill in all officer credentials");
       return;
     }
 
     setIsLoading(true);
-    setTimeout(async () => {
-      await signup({
-        name,
-        email,
-        badgeId: badgeId || `SEC-${Math.floor(1000 + Math.random() * 9000)}`,
-        department,
-        clearanceLevel: clearanceLevel as any,
-        role: "Operator",
-      });
-      setIsLoading(false);
+    const ok = await signup({
+      name,
+      email,
+      password,
+      badgeId: badgeId || `SEC-${Math.floor(1000 + Math.random() * 9000)}`,
+      department,
+      clearanceLevel: clearanceLevel as OperatorUser["clearanceLevel"],
+      role: "Operator",
+      zone: "Sector 1 (Metropolitan)",
+    });
+    setIsLoading(false);
+    if (ok) {
       toast.success("Officer Clearance Profile Provisioned", {
-        description: `Terminal initialized with clearance ${clearanceLevel}.`,
+        description: `Account created on backend — clearance ${clearanceLevel}.`,
       });
       navigate("/dashboard");
-    }, 600);
+    } else {
+      toast.error("Provisioning Failed", {
+        description: "Username/email may already be registered, or backend is unreachable.",
+      });
+    }
   };
 
   return (
