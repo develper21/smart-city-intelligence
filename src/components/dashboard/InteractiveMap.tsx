@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
-import { MapPin } from "@/data/mockData";
+import { MapPin } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -313,7 +313,7 @@ export function InteractiveMap({
         center={defaultCenter}
         zoom={defaultZoom}
         className="h-full w-full"
-        style={{ height: "100%", width: "100%", minHeight: "550px", background: "#090d16" }}
+        style={{ height: "100%", width: "100%", minHeight: "550px", background: "#eef2f6" }}
         zoomControl={false}
       >
         <MapAutoResize />
@@ -388,7 +388,7 @@ export function InteractiveMap({
       {/* Global Embedded Styles for Map HUD */}
       <style>{`
         .leaflet-container {
-          background: #0b1120 !important;
+          background: #eef2f6 !important;
           font-family: inherit;
         }
 
