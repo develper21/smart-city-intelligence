@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
-import { Alert, mockAlerts } from "@/data/mockData";
+import { createContext, useContext, useState, ReactNode, useEffect, useRef } from "react";
+import { Alert, surveillanceAPI, wsManager, WsMessage } from "@/services/api";
 import { toast } from "sonner";
+import { useAuth } from "./AuthContext";
 
 export interface NotificationItem {
   id: string;
@@ -28,38 +29,133 @@ interface NotificationContextType {
   markAllAsRead: () => void;
   removeNotification: (id: string) => void;
   clearAll: () => void;
-  triggerSimulatedAlert: () => void;
+  triggerSimulatedAlert: () => Promise<void>;
+  wsConnected: boolean;
 }
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = mockAlerts.map((alert, idx) => ({
-  id: `notif-${alert.id}`,
-  title: `${alert.type.toUpperCase()} DETECTED`,
-  message: alert.description,
-  timestamp: idx === 0 ? "Just now" : `${idx * 4 + 2} min ago`,
-  riskLevel: alert.riskLevel,
-  type: alert.type,
-  location: alert.location,
-  cameraId: alert.cameraId,
-  read: idx > 2,
-  rawAlert: alert,
-}));
+function alertToNotification(a: Alert, read = false): NotificationItem {
+  return {
+    id: `notif-${a.numericId ?? a.id}`,
+    title: `${a.type.toUpperCase()} DETECTED`,
+    message: a.description,
+    timestamp: "Just now",
+    riskLevel: a.riskLevel,
+    type: a.type,
+    location: a.location,
+    cameraId: a.cameraId,
+    read,
+    rawAlert: a,
+  };
+}
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [wsConnected, setWsConnected] = useState(false);
+  const seenIds = useRef<Set<string>>(new Set());
+  const firstLoad = useRef(true);
+  const isMountedRef = useRef(true);
+  const { isAuthenticated } = useAuth();
 
   const unreadCount = notifications.filter((n) => !n.read).length;
+
+  /* Backend se initial alerts + WebSocket live stream */
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    let isMounted = true;
+
+    surveillanceAPI
+      .getAlerts({ limit: 15 })
+      .then(({ alerts }) => {
+        if (!isMounted) return;
+        const items = alerts.map((a) =>
+          alertToNotification(a, firstLoad.current && a.status !== "active")
+        );
+        items.forEach((i) => i.rawAlert && seenIds.current.add(i.rawAlert.id));
+        firstLoad.current = false;
+        setNotifications(items);
+      })
+      .catch(() => undefined);
+
+    wsManager.connect();
+    const off = wsManager.on(handleWs);
+
+    return () => {
+      isMounted = false;
+      off();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  const playSiren = () => {
+    if (!soundEnabled) return;
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.value = 660;
+      gain.gain.setValueAtTime(0.06, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch {
+      /* audio blocked */
+    }
+  };
+
+  const handleWs = (msg: WsMessage) => {
+    if (msg.type === "system_status" && msg.payload?.status === "connected") {
+      setWsConnected(true);
+      return;
+    }
+    if (msg.type === "new_alert" && msg.payload?.alert) {
+      const alert: Alert = {
+        id: msg.payload.alert.event_ref || `ALT-${msg.payload.alert.id}`,
+        numericId: msg.payload.alert.id,
+        type: msg.payload.alert.event_type || "intrusion",
+        location: msg.payload.alert.location || "Unknown",
+        cameraId: msg.payload.alert.camera_id || "CAM-001",
+        riskLevel: msg.payload.alert.risk_level || "medium",
+        timestamp: msg.payload.alert.alert_time || new Date().toISOString(),
+        description: msg.payload.alert.message || "Live detection event",
+        status: "active",
+        confidence: msg.payload.alert.confidence,
+      };
+      if (seenIds.current.has(alert.id)) return;
+      seenIds.current.add(alert.id);
+
+      if (isMountedRef.current) {
+        setNotifications((prev) => [alertToNotification(alert), ...prev].slice(0, 50));
+      }
+      playSiren();
+      toast.warning(`${alert.type.toUpperCase()} ALERT — ${alert.riskLevel.toUpperCase()}`, {
+        description: `${alert.location} • ${alert.cameraId}`,
+        action: { label: "Inspect", onClick: () => setSelectedAlert(alert) },
+      });
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      wsManager.disconnect();
+    };
+  }, []);
 
   const toggleSound = () => setSoundEnabled((prev) => !prev);
 
   const markAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, read: true } : item))
-    );
+    setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, read: true } : item)));
   };
 
   const markAllAsRead = () => {
@@ -76,57 +172,25 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     toast.info("Notifications cleared");
   };
 
-  const triggerSimulatedAlert = () => {
-    const types: Alert["type"][] = ["intrusion", "violence", "fire", "crowd", "traffic"];
-    const risks: Alert["riskLevel"][] = ["critical", "high", "medium"];
-    const locations = [
-      "Sector 14 - Metro Station Gate 2",
-      "City Center Mall - Main Plaza",
-      "Express Highway Flyover Km 12",
-      "North Industrial Warehouse 3B",
-      "Central Park - Amphitheater",
-    ];
-
-    const randomType = types[Math.floor(Math.random() * types.length)];
-    const randomRisk = risks[Math.floor(Math.random() * risks.length)];
-    const randomLocation = locations[Math.floor(Math.random() * locations.length)];
-    const id = `ALT-${Math.floor(100 + Math.random() * 900)}`;
-
-    const newRawAlert: Alert = {
-      id,
-      type: randomType,
-      location: randomLocation,
-      cameraId: `CAM-00${Math.floor(1 + Math.random() * 6)}`,
-      riskLevel: randomRisk,
-      timestamp: new Date().toISOString(),
-      description: `Automated AI trigger: ${randomType} event flagged with high confidence.`,
-      status: "active",
-    };
-
-    const newNotif: NotificationItem = {
-      id: `notif-${id}`,
-      title: `${randomType.toUpperCase()} ALERT`,
-      message: newRawAlert.description,
-      timestamp: "Just now",
-      riskLevel: randomRisk,
-      type: randomType,
-      location: randomLocation,
-      cameraId: newRawAlert.cameraId,
-      read: false,
-      rawAlert: newRawAlert,
-    };
-
-    setNotifications((prev) => [newNotif, ...prev]);
-
-    toast.warning(`High Risk Alert: ${randomType.toUpperCase()} detected`, {
-      description: `${randomLocation} — ${newRawAlert.cameraId}`,
-      action: {
-        label: "Inspect",
-        onClick: () => {
-          setSelectedAlert(newRawAlert);
-        },
-      },
-    });
+  /* "Simulate Alert" drill — POST /api/alerts ke through, real backend cameras se */
+  const triggerSimulatedAlert = async () => {
+    try {
+      const types = ["intrusion", "violence", "crowd", "traffic", "fire", "unattended"];
+      const risks = ["critical", "high", "medium"];
+      const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+      const cameras = await surveillanceAPI.getCameras().catch(() => []);
+      const cam = cameras.length > 0 ? pick(cameras) : null;
+      await surveillanceAPI.raiseAlert({
+        event_type: pick(types),
+        message: "Manual drill trigger: synthetic event injected from Command Console.",
+        camera_id: cam?.id ?? "CAM-001",
+        location: cam?.location ?? "Unknown sector",
+        risk_level: pick(risks),
+      });
+      toast.success("Drill alert injected into backend event bus");
+    } catch {
+      toast.error("Failed to inject drill alert — backend unreachable");
+    }
   };
 
   return (
@@ -145,6 +209,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         removeNotification,
         clearAll,
         triggerSimulatedAlert,
+        wsConnected,
       }}
     >
       {children}
