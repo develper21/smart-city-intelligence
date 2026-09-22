@@ -1,0 +1,820 @@
+{
+  "info": {
+    "_postman_id": "c1a1c1a1-0001-4a01-9a01-civicbackend01",
+    "name": "CIVIC-AI Backend API (Server)",
+    "description": "════════════════════════════════════════════════════════\n CIVIC-AI Smart City Surveillance — Express Backend API\n════════════════════════════════════════════════════════\n\n▶ SETUP\n1. Server start karo:  `cd server && npm run dev`  (http://localhost:8000)\n2. \"Auth → Login (admin)\" request chalao — ye automatically `access_token` aur `refresh_token` collection variables me save kar degi.\n3. Baaki auth-wale requests khud Bearer token use karengi.\n\n▶ DEMO CREDENTIALS (seedData.js se)\n• admin      / admin123       (sab permissions)\n• supervisor / supervisor123  (resolve + dispatch)\n• operator   / operator123    (sirf acknowledge)\n• amir.khan  / amir1234       (operator)\n• priya.nair / priya1234      (operator)\n\n▶ RBAC QUICK REFERENCE\n• Public (no token): health, alerts list/get/summary, cameras list/get, analytics sab, system-status, streams, settings GET, auth login/register/refresh/logout\n• acknowledge permission: alert acknowledge, camera PTZ\n• resolve permission (supervisor/admin): alert resolve, bulk-resolve\n• manage_cameras (admin): camera create/update/delete\n• admin only: settings PUT\n\n▶ NOTE\nHar route `/api` prefix ke saath aur bina dono par available hai (legacy alias): /api/alerts aur /alerts dono chalte hain.\n\n▶ WEBSOCKET\nws://localhost:8000/ws — Postman ke 'New WebSocket Request' se test karo.\nMessage shape: { \"type\": \"new_alert\", \"payload\": { \"alert\": {...} }, \"timestamp\": \"...\" }\nTypes: new_alert, alert_updated, camera_status, camera_created, camera_updated, camera_deleted, camera_ptz, stream_started, stream_stopped, settings_updated, system_status",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "civic-ai"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "alert_id", "value": "1", "type": "string" },
+    { "key": "camera_numeric_id", "value": "1", "type": "string" },
+    { "key": "camera_string_id", "value": "CAM-001", "type": "string" },
+    { "key": "stream_id", "value": "test-stream-1", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{access_token}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "0 · Health",
+      "item": [
+        {
+          "name": "GET /api/health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/health",
+              "host": ["{{base_url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Liveness probe. Response: `{ \"status\": \"ok\", \"service\": \"civic-ai-server\", \"timestamp\": \"...\" }`"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"status ok\", () => pm.expect(pm.response.json().status).to.eql(\"ok\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1 · Auth",
+      "description": "JWT auth flow. Login/Register ke baad tokens collection variables me auto-save hote hain.",
+      "item": [
+        {
+          "name": "POST /api/auth/login  (admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set(\"access_token\", json.access_token);",
+                  "  pm.collectionVariables.set(\"refresh_token\", json.refresh_token);",
+                  "  console.log(\"✅ access_token + refresh_token saved\");",
+                  "}",
+                  "pm.test(\"tokens returned\", () => pm.expect(json.access_token).to.be.a(\"string\"));",
+                  "pm.test(\"user role admin\", () => pm.expect(json.user.role).to.eql(\"admin\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Username YA email dono se login hota hai. Response: access_token (15m), refresh_token (7d), user with permissions.\n\nYe request chalane par tokens auto-save ho jate hain — baaki requests Bearer {{access_token}} use karti hain."
+          }
+        },
+        {
+          "name": "POST /api/auth/login  (operator — email se)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) pm.collectionVariables.set(\"access_token\", json.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rajesh.k@command.smartcity.gov\",\n  \"password\": \"operator123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Email se login. Operator role ke paas sirf `view` + `acknowledge` permissions hain — resolve/403 test karne ke liye isse use karo."
+          }
+        },
+        {
+          "name": "POST /api/auth/register  (public signup)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"new.officer\",\n  \"email\": \"new.officer@smartcity.gov\",\n  \"password\": \"secure1234\",\n  \"name\": \"New Officer\",\n  \"badge\": \"SEC-7742\",\n  \"department\": \"Urban CCTV Command Unit\",\n  \"zone\": \"Sector 1 (Metropolitan)\",\n  \"role\": \"operator\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Public officer provisioning (Signup page isi ko call karta hai).\n• Required: username, email, password\n• Optional: name, badge, department, zone, role (default: operator)\n• 409 agar username/email already registered\n• 201 response: { message, user }"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"201 Created ya 409 duplicate\", () => pm.expect([201, 409]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set(\"access_token\", json.access_token);",
+                  "  console.log(\"✅ naya access_token saved\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refresh"]
+            },
+            "description": "Refresh token exchange karke naya access token deta hai. Naya token auto-save ho jata hai."
+          }
+        },
+        {
+          "name": "POST /api/auth/logout",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/logout",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "logout"]
+            },
+            "description": "Stateless JWT — server kuch nahi karta, client tokens discard karta hai. Contract parity ke liye."
+          }
+        },
+        {
+          "name": "GET /api/auth/me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Current operator profile (Bearer required). Frontend session restore isi ko call karta hai. 401 bina token."
+          }
+        },
+        {
+          "name": "PUT /api/auth/me",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Rajesh Kumar\",\n  \"department\": \"Urban CCTV Command Unit\",\n  \"zone\": \"Zone A - North District\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Own profile update. Allowed fields: name, email, department, zone."
+          }
+        },
+        {
+          "name": "PUT /api/auth/me/password",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"operator123\",\n  \"new_password\": \"operator456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/me/password",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "me", "password"]
+            },
+            "description": "Password change (current password verify hota hai). 401 agar current galat."
+          }
+        },
+        {
+          "name": "GET /api/auth/users  (admin/supervisor)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/users",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "users"]
+            },
+            "description": "Operator directory. RBAC: sirf admin aur supervisor. Operator se call karne par 403."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · Alerts",
+      "description": "Alert triage system. List/get/summary public hain; actions permission-protected.",
+      "item": [
+        {
+          "name": "GET /api/alerts  (list + filters)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts?limit=20&offset=0",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"],
+              "query": [
+                { "key": "limit", "value": "20", "description": "Page size (max 500, default 50)" },
+                { "key": "offset", "value": "0", "description": "Pagination offset" },
+                { "key": "risk_level", "value": "", "description": "low | medium | high | critical", "disabled": true },
+                { "key": "event_type", "value": "", "description": "intrusion | violence | unattended | crowd | traffic | fire", "disabled": true },
+                { "key": "status", "value": "", "description": "active | investigating | resolved", "disabled": true },
+                { "key": "acknowledged", "value": "", "description": "true | false", "disabled": true },
+                { "key": "camera_id", "value": "", "description": "e.g. CAM-001", "disabled": true }
+              ]
+            },
+            "description": "Paginated alert list, newest first. Response: { alerts: [...], total, limit, offset }.\n\nAlert object: id, event_ref (ALT-001), event_type, camera_id, location, risk_level, message, confidence, status, acknowledged, acknowledged_by, resolved, alert_time."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"alerts array\", () => pm.expect(pm.response.json().alerts).to.be.an(\"array\"));",
+                  "const first = pm.response.json().alerts[0];",
+                  "if (first) pm.collectionVariables.set(\"alert_id\", String(first.id));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/alerts/summary",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts", "summary"]
+            },
+            "description": "Badge counts. Response: { by_risk: {low, medium, high, critical}, by_status: {active, investigating, resolved}, total }"
+          }
+        },
+        {
+          "name": "GET /api/alerts/:id",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts/{{alert_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts", "{{alert_id}}"]
+            },
+            "description": "Single alert by numeric id. 404 agar nahi mila."
+          }
+        },
+        {
+          "name": "PUT /api/alerts/:id/acknowledge",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts/{{alert_id}}/acknowledge?acknowledged_by=admin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts", "{{alert_id}}", "acknowledge"],
+              "query": [
+                { "key": "acknowledged_by", "value": "admin", "description": "Operator badge/username (optional, default req.user)" }
+              ]
+            },
+            "description": "Alert acknowledge karo — status → investigating. Permission: `acknowledge` (operator, supervisor, admin sab kar sakte hain).\nWebSocket broadcast: alert_updated."
+          }
+        },
+        {
+          "name": "PUT /api/alerts/:id/resolve",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/alerts/{{alert_id}}/resolve?acknowledged_by=admin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts", "{{alert_id}}", "resolve"],
+              "query": [
+                { "key": "acknowledged_by", "value": "admin" }
+              ]
+            },
+            "description": "Alert resolve — status → resolved, resolved_time set. Permission: `resolve` (sirf supervisor/admin).\nCamera warning clear hoti hai agar us camera ka last active alert ye tha.\nOperator token se → 403."
+          }
+        },
+        {
+          "name": "POST /api/alerts/bulk-resolve",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alert_ids\": [1, 2, 3]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/alerts/bulk-resolve?acknowledged_by=admin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts", "bulk-resolve"],
+              "query": [{ "key": "acknowledged_by", "value": "admin" }]
+            },
+            "description": "Ek saath multiple alerts resolve (\"Resolve All Active\" button). Permission: `resolve`. Response: { message, count }"
+          }
+        },
+        {
+          "name": "POST /api/alerts  (manual raise / drill)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"intrusion\",\n  \"message\": \"Manual drill trigger from Postman\",\n  \"camera_id\": \"CAM-001\",\n  \"location\": \"Sector 12, Gate A\",\n  \"risk_level\": \"high\",\n  \"confidence\": 0.9\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/alerts",
+              "host": ["{{base_url}}"],
+              "path": ["api", "alerts"]
+            },
+            "description": "Naya alert raise karo (drill/integration). Required: event_type, message.\nDB me persist + WebSocket `new_alert` broadcast — frontend par turant toast+siren ayega.\n\n⚠ Simulation engine (ALERT_SIMULATION=true) har 25s me khud ek synthetic alert banata hai."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "if (json.id) pm.collectionVariables.set(\"alert_id\", String(json.id));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 · Cameras",
+      "description": "Camera provisioning + PTZ. Reads public; writes need `manage_cameras` (admin).",
+      "item": [
+        {
+          "name": "GET /api/cameras  (list + filters)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cameras",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras"],
+              "query": [
+                { "key": "status", "value": "", "description": "online | offline | warning", "disabled": true },
+                { "key": "zone", "value": "", "description": "Zone A | Zone B | Zone C | Zone D", "disabled": true }
+              ]
+            },
+            "description": "Camera list. Object: id, camera_id (CAM-001), name, location, status, zone, rtsp_url, lat, lng, ptz_config, thumbnail_path, created_at, updated_at."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"12 seeded cameras\", () => pm.expect(pm.response.json().length).to.be.at.least(6));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/cameras/by-id/:cameraId",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cameras/by-id/{{camera_string_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras", "by-id", "{{camera_string_id}}"]
+            },
+            "description": "String id se lookup (CAM-001)."
+          }
+        },
+        {
+          "name": "GET /api/cameras/:id",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cameras/{{camera_numeric_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras", "{{camera_numeric_id}}"]
+            },
+            "description": "Numeric id se lookup."
+          }
+        },
+        {
+          "name": "GET /api/cameras/:id/history",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cameras/{{camera_numeric_id}}/history",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras", "{{camera_numeric_id}}", "history"]
+            },
+            "description": "Us camera ke last 20 alerts. Response: { camera, alerts }"
+          }
+        },
+        {
+          "name": "POST /api/cameras  (provision)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"camera_id\": \"CAM-TEST\",\n  \"name\": \"Postman Test Camera\",\n  \"location\": \"Test Sector, Post 1\",\n  \"zone\": \"Zone A\",\n  \"rtsp_url\": \"rtsp://civic.local/stream/test\",\n  \"lat\": 28.6139,\n  \"lng\": 77.209\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cameras",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras"]
+            },
+            "description": "Naya camera provision. Required: camera_id, name, location, zone.\nPermission: `manage_cameras` (admin). Duplicate camera_id → 409. Operator se → 403.\nWebSocket broadcast: camera_created."
+          }
+        },
+        {
+          "name": "PUT /api/cameras/:id",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Renamed Camera\",\n  \"status\": \"warning\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cameras/{{camera_numeric_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras", "{{camera_numeric_id}}"]
+            },
+            "description": "Camera metadata update (name, location, zone, status, rtsp_url, lat, lng, ptz_config, thumbnail_path).\nPermission: `manage_cameras`. Invalid status → 422.\nWebSocket broadcast: camera_updated."
+          }
+        },
+        {
+          "name": "DELETE /api/cameras/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/cameras/{{camera_numeric_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras", "{{camera_numeric_id}}"]
+            },
+            "description": "Camera de-provision. Permission: `manage_cameras`.\nWebSocket broadcast: camera_deleted.\n⚠ Seeded camera delete karoge to re-seed ke liye server/data/ delete karke restart karo."
+          }
+        },
+        {
+          "name": "POST /api/cameras/:id/ptz",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pan\": 10,\n  \"tilt\": -5,\n  \"zoom\": 2\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/cameras/{{camera_numeric_id}}/ptz",
+              "host": ["{{base_url}}"],
+              "path": ["api", "cameras", "{{camera_numeric_id}}", "ptz"]
+            },
+            "description": "Pan/Tilt/Zoom control. Permission: `acknowledge` (operator bhi kar sakta hai).\nResponse: { message, ptz_config }"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 · Analytics",
+      "description": "Dashboard KPIs aur charts ka data. Sab public reads.",
+      "item": [
+        {
+          "name": "GET /api/analytics/summary",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/summary",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "summary"]
+            },
+            "description": "Headline KPIs: total_cameras, active_cameras, total_alerts, critical_alerts, resolved_today, avg_response_time, system_uptime."
+          }
+        },
+        {
+          "name": "GET /api/analytics/incidents-over-time?days=7",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/incidents-over-time?days=7",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "incidents-over-time"],
+              "query": [{ "key": "days", "value": "7", "description": "1 | 7 | 30 | 90 (max 90)" }]
+            },
+            "description": "Trend chart data: [{ date: 'Sep 16', incidents: n, resolved: n }]"
+          }
+        },
+        {
+          "name": "GET /api/analytics/alert-types",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/alert-types",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "alert-types"]
+            },
+            "description": "Crime type distribution (bar chart): [{ type, count, color }]"
+          }
+        },
+        {
+          "name": "GET /api/analytics/hourly-activity",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/hourly-activity",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "hourly-activity"]
+            },
+            "description": "24h peak activity curve (last 7 days se): [{ hour: '14:00', incidents: n }]"
+          }
+        },
+        {
+          "name": "GET /api/analytics/resolution-status",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/resolution-status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "resolution-status"]
+            },
+            "description": "Pie chart: [{ status: 'Resolved' | 'Investigating' | 'Active', count, percentage }]"
+          }
+        },
+        {
+          "name": "GET /api/analytics/performance",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/performance",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "performance"]
+            },
+            "description": "Pipeline metrics: system_uptime, camera_coverage, alert_processing, fps, avg_processing_time, frames_processed, uptime_seconds."
+          }
+        },
+        {
+          "name": "GET /api/analytics/operators",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/operators",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "operators"]
+            },
+            "description": "Operator roster (Operators page table): id, badge, name, role, department, unit, status (online/offline/on_break), zone, alerts_handled, avatar, last_active."
+          }
+        },
+        {
+          "name": "GET /api/analytics/map-pins",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/analytics/map-pins",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analytics", "map-pins"]
+            },
+            "description": "GIS map markers (sirf non-resolved alerts, camera lat/lng se): [{ id, lat, lng, type, riskLevel, location }]"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 · System & Streams",
+      "description": "System status + RTSP stream lifecycle simulation.",
+      "item": [
+        {
+          "name": "GET /api/system-status",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/system-status",
+              "host": ["{{base_url}}"],
+              "path": ["api", "system-status"]
+            },
+            "description": "Dashboard polling endpoint: status, model_loaded, metrics { active_streams, frames_processed, alerts_generated, fps, avg_processing_time, uptime_seconds }, cameras { total, online, offline, warning }, streams map."
+          }
+        },
+        {
+          "name": "POST /api/start-stream",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/start-stream?stream_id={{stream_id}}&source=rtsp://civic.local/stream/cam001&location=Sector 12",
+              "host": ["{{base_url}}"],
+              "path": ["api", "start-stream"],
+              "query": [
+                { "key": "stream_id", "value": "{{stream_id}}" },
+                { "key": "source", "value": "rtsp://civic.local/stream/cam001" },
+                { "key": "location", "value": "Sector 12" }
+              ]
+            },
+            "description": "Stream attach karo (RTSP pull simulation). Required: stream_id, source.\nWebSocket broadcast: stream_started."
+          }
+        },
+        {
+          "name": "POST /api/stop-stream",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/stop-stream?stream_id={{stream_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "stop-stream"],
+              "query": [{ "key": "stream_id", "value": "{{stream_id}}" }]
+            },
+            "description": "Stream detach. 404 agar exist nahi karta. WebSocket: stream_stopped."
+          }
+        },
+        {
+          "name": "GET /api/streams",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/streams",
+              "host": ["{{base_url}}"],
+              "path": ["api", "streams"]
+            },
+            "description": "Active streams list: { streams: { id: { source, location, frame_count, fps, last_alert_time, is_active } }, total }"
+          }
+        }
+      ]
+    },
+    {
+      "name": "6 · Settings",
+      "description": "Global system config — GET public, PUT admin-only.",
+      "item": [
+        {
+          "name": "GET /api/settings",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/settings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "settings"]
+            },
+            "description": "Current settings: auto_refresh, telemetry_interval_s, notifications { desktop, siren_volume, email_relay, sms_relay }, privacy { face_anonymization, plate_masking, retention_days }, ai { model, confidence_threshold, crowd_proximity_px, simulation_enabled }."
+          }
+        },
+        {
+          "name": "PUT /api/settings  (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"telemetry_interval_s\": 30,\n  \"privacy\": { \"retention_days\": 90 },\n  \"ai\": { \"confidence_threshold\": 0.6 }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/settings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "settings"]
+            },
+            "description": "Settings update — deep merge hota hai (partial body allowed). RBAC: sirf admin (403 otherwise).\nWebSocket broadcast: settings_updated."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 · Video Analysis",
+      "item": [
+        {
+          "name": "POST /api/analyze-video  (multipart upload)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": [],
+                  "description": "Video file (mp4/avi/mkv...). Max 500MB."
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/analyze-video?persist=false",
+              "host": ["{{base_url}}"],
+              "path": ["api", "analyze-video"],
+              "query": [
+                { "key": "persist", "value": "false", "description": "true karo to detected alerts DB me save honge" }
+              ]
+            },
+            "description": "Offline video analysis (simulated AI detection). Bearer required (admin recommended).\nmultipart/form-data me `file` field bhejo.\nResponse: { status, file, original_name, size_bytes, total_frames, duration_seconds, alerts_detected, alerts: [{ timestamp, event_type, risk_level, confidence, description, location }] }"
+          }
+        }
+      ]
+    }
+  ]
+}
