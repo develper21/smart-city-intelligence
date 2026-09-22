@@ -14,6 +14,7 @@ import camerasRoutes from "./routes/cameras.js";
 import analyticsRoutes from "./routes/analytics.js";
 import streamsRoutes from "./routes/streams.js";
 import videoRoutes from "./routes/video.js";
+import settingsRoutes from "./routes/settings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -57,6 +58,7 @@ api.use("/analytics", analyticsRoutes);
 /* Streams + system-status + settings + video */
 api.use("/", streamsRoutes);
 api.use("/", videoRoutes);
+api.use("/", settingsRoutes);
 
 app.use("/api", api);
 
