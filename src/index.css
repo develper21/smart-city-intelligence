@@ -153,8 +153,13 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    @apply bg-background text-foreground font-sans antialiased selection:bg-primary/30 selection:text-foreground;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+    letter-spacing: -0.02em;
   }
 
   .font-mono {
@@ -165,7 +170,35 @@
 @layer components {
   /* Glass morphism card */
   .glass-card {
-    @apply bg-card/80 backdrop-blur-xl border border-border/50 rounded-lg shadow-lg;
+    @apply bg-card/75 backdrop-blur-xl border border-border/60 rounded-xl shadow-xl transition-all duration-300;
+  }
+
+  .glass-card-hover {
+    @apply bg-card/75 backdrop-blur-xl border border-border/60 rounded-xl shadow-xl hover:border-primary/40 hover:shadow-primary/5 hover:shadow-2xl transition-all duration-300;
+  }
+
+  .hud-border {
+    position: relative;
+  }
+  .hud-border::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 8px;
+    height: 8px;
+    border-top: 2px solid hsl(var(--primary));
+    border-left: 2px solid hsl(var(--primary));
+  }
+  .hud-border::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    height: 8px;
+    border-bottom: 2px solid hsl(var(--primary));
+    border-right: 2px solid hsl(var(--primary));
   }
 
   /* Status indicator pulse */
@@ -181,8 +214,8 @@
 
   /* Glow effect */
   .glow-primary {
-    box-shadow: 0 0 20px hsl(var(--primary) / 0.3),
-                0 0 40px hsl(var(--primary) / 0.1);
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.35),
+                0 0 40px hsl(var(--primary) / 0.12);
   }
 
   .glow-success {
