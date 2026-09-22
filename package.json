@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "server": "npm run start --prefix server",
+    "server:dev": "npm run dev --prefix server",
+    "server:test": "npm test --prefix server"
   },
   "dependencies": {
     "@googlemaps/react-wrapper": "^1.2.0",
