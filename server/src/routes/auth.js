@@ -6,6 +6,7 @@ import {
   signRefreshToken,
   verifyRefresh,
   authenticate,
+  requireRole,
 } from "../middleware/auth.js";
 import { findIn, filterIn, insert, updateIn, nextId } from "../store.js";
 import { logger } from "../middleware/logger.js";
