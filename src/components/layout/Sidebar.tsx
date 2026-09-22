@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { NavLink, useLocation, Link } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { surveillanceAPI } from "@/services/api";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -26,7 +28,7 @@ interface SidebarProps {
 const navItems = [
   { icon: LayoutDashboard, label: "Operations Dashboard", path: "/dashboard" },
   { icon: Video, label: "Live Camera Feeds", path: "/live-feeds" },
-  { icon: AlertTriangle, label: "Security Alerts", path: "/alerts", badge: "6 Active" },
+  { icon: AlertTriangle, label: "Security Alerts", path: "/alerts", alertBadge: true },
   { icon: Map, label: "Metropolitan Map", path: "/map" },
   { icon: BarChart3, label: "City Analytics", path: "/analytics" },
   { icon: Activity, label: "Incident Registry", path: "/incidents" },
@@ -36,6 +38,25 @@ const navItems = [
 
 export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse }: SidebarProps) {
   const location = useLocation();
+  const [activeAlerts, setActiveAlerts] = useState(0);
+
+  /* Live backend badge — active alerts count */
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      surveillanceAPI
+        .getAlerts({ status: "active", limit: 1 })
+        .then(({ total }) => {
+          if (alive) setActiveAlerts(total);
+        })
+        .catch(() => undefined);
+    load();
+    const t = setInterval(load, 30000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
 
   return (
     <>
@@ -128,9 +149,9 @@ export function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse }: Side
                     {!isCollapsed && <span className="truncate">{item.label}</span>}
                   </div>
 
-                  {!isCollapsed && item.badge && !isActive && (
+                  {!isCollapsed && item.alertBadge && !isActive && (
                     <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-destructive/15 text-destructive border border-destructive/25">
-                      {item.badge}
+                      {activeAlerts} Active
                     </span>
                   )}
                 </NavLink>
