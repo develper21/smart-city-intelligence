@@ -19,6 +19,20 @@ export interface Alert {
   alert_time: string;
   acknowledged: boolean;
   acknowledged_by?: string;
+  acknowledged_time?: string;
+}
+
+export interface Camera {
+  id: number;
+  camera_id: string;
+  name: string;
+  location: string;
+  status: 'online' | 'offline' | 'warning';
+  zone: string;
+  rtsp_url?: string;
+  thumbnail_path?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SystemStatus {
@@ -70,6 +84,31 @@ export interface VideoAnalysisResult {
   error?: string;
 }
 
+// Authentication types
+export interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+  user: {
+    id: number;
+    username: string;
+    email: string;
+    role: string;
+    permissions: string[];
+  };
+}
+
+export interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: string;
+  permissions: string[];
+  is_active: boolean;
+  last_login?: string;
+}
+
 // API Functions
 export const surveillanceAPI = {
   // System Status
@@ -79,14 +118,148 @@ export const surveillanceAPI = {
   },
 
   // Alerts
-  async getAlerts(limit: number = 10): Promise<{ alerts: Alert[]; total: number }> {
-    const response = await api.get(`/alerts?limit=${limit}`);
+  async getAlerts(
+    limit: number = 10,
+    riskLevel?: string,
+    eventType?: string,
+    status?: string,
+    acknowledged?: boolean
+  ): Promise<{ alerts: Alert[]; total: number }> {
+    const params = new URLSearchParams();
+    params.append('limit', limit.toString());
+    if (riskLevel) params.append('risk_level', riskLevel);
+    if (eventType) params.append('event_type', eventType);
+    if (status) params.append('status', status);
+    if (acknowledged !== undefined) params.append('acknowledged', acknowledged.toString());
+    
+    const response = await api.get(`/alerts?${params.toString()}`);
+    return response.data;
+  },
+
+  async getAlert(alertId: number): Promise<Alert> {
+    const response = await api.get(`/alerts/${alertId}`);
+    return response.data;
+  },
+
+  async acknowledgeAlert(alertId: number, acknowledgedBy: string): Promise<{ message: string }> {
+    const response = await api.put(`/alerts/${alertId}/acknowledge`, null, {
+      params: { acknowledged_by: acknowledgedBy }
+    });
+    return response.data;
+  },
+
+  async resolveAlert(alertId: number, acknowledgedBy: string): Promise<{ message: string }> {
+    const response = await api.put(`/alerts/${alertId}/resolve`, null, {
+      params: { acknowledged_by: acknowledgedBy }
+    });
+    return response.data;
+  },
+
+  async bulkResolveAlerts(alertIds: number[], acknowledgedBy: string): Promise<{ message: string; count: number }> {
+    const response = await api.post('/alerts/bulk-resolve', { alert_ids: alertIds }, {
+      params: { acknowledged_by: acknowledgedBy }
+    });
+    return response.data;
+  },
+
+  // Cameras
+  async getCameras(status?: string, zone?: string): Promise<Camera[]> {
+    const params = new URLSearchParams();
+    if (status) params.append('status', status);
+    if (zone) params.append('zone', zone);
+    
+    const response = await api.get(`/cameras?${params.toString()}`);
+    return response.data;
+  },
+
+  async getCamera(cameraId: number): Promise<Camera> {
+    const response = await api.get(`/cameras/${cameraId}`);
+    return response.data;
+  },
+
+  async getCameraByCameraId(cameraIdStr: string): Promise<Camera> {
+    const response = await api.get(`/cameras/by-id/${cameraIdStr}`);
+    return response.data;
+  },
+
+  async createCamera(cameraData: {
+    camera_id: string;
+    name: string;
+    location: string;
+    zone: string;
+    rtsp_url?: string;
+    ptz_config?: object;
+  }): Promise<Camera> {
+    const response = await api.post('/cameras', cameraData);
+    return response.data;
+  },
+
+  async updateCamera(cameraId: number, cameraData: Partial<Camera>): Promise<Camera> {
+    const response = await api.put(`/cameras/${cameraId}`, cameraData);
+    return response.data;
+  },
+
+  async deleteCamera(cameraId: number): Promise<{ message: string }> {
+    const response = await api.delete(`/cameras/${cameraId}`);
+    return response.data;
+  },
+
+  async controlCameraPTZ(cameraId: number, ptz: { pan?: number; tilt?: number; zoom?: number }): Promise<{ message: string; ptz_config: object }> {
+    const response = await api.post(`/cameras/${cameraId}/ptz`, ptz);
     return response.data;
   },
 
   // Analytics
   async getAnalytics(): Promise<Analytics> {
     const response = await api.get('/analytics');
+    return response.data;
+  },
+
+  async getAnalyticsSummary(): Promise<{
+    total_incidents: number;
+    resolution_rate: number;
+    avg_response_time: string;
+    detection_accuracy: string;
+    system_uptime: number;
+    camera_coverage: number;
+    alert_processing: number;
+    timestamp: string;
+  }> {
+    const response = await api.get('/analytics/summary');
+    return response.data;
+  },
+
+  async getIncidentsOverTime(days: number = 7): Promise<{ data: Array<{ date: string; incidents: number; resolved: number }>; period_days: number }> {
+    const response = await api.get(`/analytics/incidents-over-time?days=${days}`);
+    return response.data;
+  },
+
+  async getAlertTypesDistribution(): Promise<{ data: Array<{ type: string; count: number; color: string }> }> {
+    const response = await api.get('/analytics/alert-types');
+    return response.data;
+  },
+
+  async getHourlyActivity(): Promise<{ data: Array<{ hour: string; incidents: number }> }> {
+    const response = await api.get('/analytics/hourly-activity');
+    return response.data;
+  },
+
+  async getResolutionStatus(): Promise<{ data: Array<{ status: string; count: number; percentage: number }> }> {
+    const response = await api.get('/analytics/resolution-status');
+    return response.data;
+  },
+
+  async getPerformanceMetrics(): Promise<{
+    system_uptime: number;
+    camera_coverage: number;
+    alert_processing: number;
+    fps: number;
+    avg_processing_time: number;
+    frames_processed: number;
+    uptime_seconds: number;
+    timestamp: string;
+  }> {
+    const response = await api.get('/analytics/performance');
     return response.data;
   },
 
@@ -120,6 +293,34 @@ export const surveillanceAPI = {
 
   async getStreams(): Promise<{ streams: SystemStatus['streams']; total: number }> {
     const response = await api.get('/streams');
+    return response.data;
+  },
+
+  // Authentication
+  async register(username: string, email: string, password: string, role: string = 'viewer'): Promise<{ message: string; user: { id: number; username: string; email: string; role: string } }> {
+    const response = await api.post('/auth/register', { username, email, password, role });
+    return response.data;
+  },
+
+  async login(username: string, password: string): Promise<AuthResponse> {
+    const response = await api.post('/auth/login', { username, password });
+    return response.data;
+  },
+
+  async refreshToken(refreshToken: string): Promise<{ access_token: string; token_type: string; expires_in: number }> {
+    const response = await api.post('/auth/refresh', { refresh_token: refreshToken });
+    return response.data;
+  },
+
+  async logout(refreshToken: string): Promise<{ message: string }> {
+    const response = await api.post('/auth/logout', { refresh_token: refreshToken });
+    return response.data;
+  },
+
+  async getCurrentUser(token: string): Promise<User> {
+    const response = await api.get('/auth/me', {
+      params: { token }
+    });
     return response.data;
   },
 };
