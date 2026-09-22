@@ -1,16 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { IncidentDetailsModal } from "@/components/dashboard/IncidentDetailsModal";
-import { mockAlerts } from "@/data/mockData";
+import { Alert, surveillanceAPI } from "@/services/api";
 import {
   AlertTriangle,
   Calendar,
   Clock,
-  FileText,
+  CheckCircle,
   Filter,
   Search,
   Download,
-  CheckCircle,
   Eye,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -36,23 +35,20 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const mockIncidentHistory = [
-  ...mockAlerts,
-  ...mockAlerts.map((a, i) => ({
-    ...a,
-    id: `${a.id}-H${i + 1}`,
-    status: "resolved" as const,
-    timestamp: "2026-09-20T14:30:00",
-    description: `Archived resolution: ${a.description}`,
-  })),
-];
-
 export default function Incidents() {
+  const [incidents, setIncidents] = useState<Alert[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedIncident, setSelectedIncident] = useState<any | null>(null);
+  const [selectedIncident, setSelectedIncident] = useState<Alert | null>(null);
 
-  const filteredIncidents = mockIncidentHistory.filter((inc) => {
+  useEffect(() => {
+    surveillanceAPI
+      .getAlerts({ limit: 300 })
+      .then(({ alerts }) => setIncidents(alerts))
+      .catch(() => toast.error("Backend se incident registry fetch nahi hui"));
+  }, []);
+
+  const filteredIncidents = incidents.filter((inc) => {
     const matchesStatus = statusFilter === "all" || inc.status === statusFilter;
     const matchesSearch =
       inc.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -63,10 +59,37 @@ export default function Incidents() {
   });
 
   const handleExport = () => {
+    if (filteredIncidents.length === 0) {
+      toast.info("Export ke liye koi incident nahi mila");
+      return;
+    }
+    const header = "Case ID,Category,Location,Camera,Threat Level,Timestamp,Status,Description";
+    const rows = filteredIncidents.map((inc) =>
+      [
+        inc.id,
+        inc.type,
+        `"${inc.location.replace(/"/g, '""')}"`,
+        inc.cameraId,
+        inc.riskLevel,
+        inc.timestamp,
+        inc.status,
+        `"${inc.description.replace(/"/g, '""')}"`,
+      ].join(",")
+    );
+    const blob = new Blob([[header, ...rows].join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `civic_incidents_audit_log_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
     toast.success("Incident Log Registry Exported", {
-      description: "civic_incidents_audit_log_2026.csv generated successfully.",
+      description: `${filteredIncidents.length} records CSV me export ho gaye.`,
     });
   };
+
+  const totalResolved = incidents.filter((i) => i.status === "resolved").length;
+  const resolvedRate = incidents.length ? Math.round((totalResolved / incidents.length) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -78,7 +101,7 @@ export default function Incidents() {
               Incident Registry & Case Files
             </h1>
             <Badge variant="outline" className="border-primary/40 text-primary font-mono text-xs">
-              IMMUTABLE AUDIT TRAIL
+              LIVE BACKEND REGISTRY
             </Badge>
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm mt-1">
@@ -92,31 +115,26 @@ export default function Incidents() {
         </Button>
       </div>
 
-      {/* Stats Summary */}
+      {/* Stats Summary — backend derived */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard title="Total Incidents" value={incidents.length} subtitle="All-time Backend Registry" icon={AlertTriangle} />
         <StatsCard
-          title="Total Incidents"
-          value="1,428"
-          subtitle="All-time Municipal Registry"
-          icon={AlertTriangle}
-        />
-        <StatsCard
-          title="This Month"
-          value="114"
-          subtitle="September 2026"
+          title="Active Now"
+          value={incidents.filter((i) => i.status === "active").length}
+          subtitle="Awaiting triage"
           icon={Calendar}
           variant="info"
         />
         <StatsCard
-          title="Avg. Resolution"
-          value="3.8 hrs"
-          subtitle="Mean time to clearance"
+          title="Resolved"
+          value={totalResolved}
+          subtitle="Backend-verified closure"
           icon={Clock}
           variant="success"
         />
         <StatsCard
           title="Resolved Rate"
-          value="96.2%"
+          value={`${resolvedRate}%`}
           subtitle="Successful legal clearance"
           icon={CheckCircle}
           variant="success"
@@ -173,9 +191,7 @@ export default function Incidents() {
                 <TableCell className="font-mono font-semibold text-xs text-primary">
                   {incident.id}
                 </TableCell>
-                <TableCell className="text-xs font-medium capitalize">
-                  {incident.type}
-                </TableCell>
+                <TableCell className="text-xs font-medium capitalize">{incident.type}</TableCell>
                 <TableCell className="text-xs">
                   <div className="font-medium text-foreground">{incident.location}</div>
                   <div className="text-[10px] text-muted-foreground font-mono">{incident.cameraId}</div>
@@ -184,9 +200,7 @@ export default function Incidents() {
                   <RiskBadge level={incident.riskLevel} />
                 </TableCell>
                 <TableCell className="text-xs font-mono text-muted-foreground">
-                  {incident.timestamp.includes("T")
-                    ? format(new Date(incident.timestamp), "MMM dd, HH:mm")
-                    : incident.timestamp}
+                  {format(new Date(incident.timestamp), "MMM dd, HH:mm")}
                 </TableCell>
                 <TableCell>
                   <span
@@ -218,6 +232,14 @@ export default function Incidents() {
             ))}
           </TableBody>
         </Table>
+        {filteredIncidents.length === 0 && (
+          <div className="p-10 text-center">
+            <p className="text-sm font-semibold">No Incidents Match Filters</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Backend registry me is query ke liye koi record nahi mila.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Embedded Incident Dossier Modal */}
