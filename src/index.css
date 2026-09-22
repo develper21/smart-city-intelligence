@@ -6,7 +6,8 @@
 @tailwind utilities;
 
 /* AI Urban Surveillance System Design System
-   Dark cyber-control room aesthetic with green accents
+   Light/white control-room aesthetic with green accents
+   Dark theme remove ho chuka hai — app sirf light me chalti hai.
 */
 
 @layer base {
@@ -77,73 +78,6 @@
     --risk-medium: 38 92% 50%;
     --risk-high: 0 84% 60%;
     --risk-critical: 0 90% 45%;
-  }
-
-  .dark {
-    /* Dark Theme - Cyber surveillance aesthetic */
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 160 84% 45%;
-    --primary-foreground: 222 47% 6%;
-
-    --secondary: 217 33% 14%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 217 33% 14%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 160 84% 45%;
-    --accent-foreground: 222 47% 6%;
-
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 210 40% 98%;
-
-    --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 6%;
-
-    --success: 142 76% 42%;
-    --success-foreground: 222 47% 6%;
-
-    --info: 199 89% 48%;
-    --info-foreground: 222 47% 6%;
-
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 160 84% 45%;
-
-    /* Sidebar */
-    --sidebar-background: 222 47% 5%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 160 84% 45%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 217 33% 14%;
-    --sidebar-accent-foreground: 160 84% 65%;
-    --sidebar-border: 217 33% 18%;
-    --sidebar-ring: 160 84% 45%;
-
-    /* Custom surveillance tokens */
-    --glass: 222 47% 10% / 0.8;
-    --glass-border: 217 33% 20%;
-    --glow-primary: 160 84% 45%;
-    --status-online: 142 76% 42%;
-    --status-offline: 0 72% 51%;
-    --status-warning: 38 92% 50%;
-    --chart-1: 160 84% 45%;
-    --chart-2: 199 89% 48%;
-    --chart-3: 38 92% 50%;
-    --chart-4: 0 72% 51%;
-    --chart-5: 280 65% 60%;
-    --risk-low: 142 76% 42%;
-    --risk-medium: 38 92% 50%;
-    --risk-high: 0 72% 51%;
-    --risk-critical: 0 85% 45%;
   }
 }
 
@@ -241,7 +175,7 @@
 
   /* Map styles */
   .map-container {
-    background: linear-gradient(180deg, hsl(var(--background)), hsl(222 47% 8%));
+    background: linear-gradient(180deg, hsl(var(--background)), hsl(210 20% 96%));
     @apply rounded-lg overflow-hidden;
   }
 
