@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { CameraFeedCard } from "@/components/dashboard/CameraFeedCard";
 import { CameraStreamModal } from "@/components/dashboard/CameraStreamModal";
-import { mockCameras, Camera } from "@/data/mockData";
+import { surveillanceAPI, Camera } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,8 +33,16 @@ export default function LiveFeeds() {
   const [zoneFilter, setZoneFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCameraForStream, setSelectedCameraForStream] = useState<Camera | null>(null);
+  const [cameras, setCameras] = useState<Camera[]>([]);
 
-  const filteredCameras = mockCameras.filter((camera) => {
+  useEffect(() => {
+    surveillanceAPI
+      .getCameras()
+      .then(setCameras)
+      .catch(() => toast.error("Backend se cameras fetch nahi hue"));
+  }, []);
+
+  const filteredCameras = cameras.filter((camera) => {
     const matchesStatus = statusFilter === "all" || camera.status === statusFilter;
     const matchesZone = zoneFilter === "all" || camera.zone === zoneFilter;
     const matchesSearch =
@@ -66,7 +74,15 @@ export default function LiveFeeds() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => toast.info("All camera RTSP stream connections re-verified")}
+            onClick={() => {
+              surveillanceAPI
+                .getCameras()
+                .then((cams) => {
+                  setCameras(cams);
+                  toast.success("Feeds synced from backend");
+                })
+                .catch(() => toast.error("Backend unreachable"));
+            }}
             className="text-xs h-9"
           >
             <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
