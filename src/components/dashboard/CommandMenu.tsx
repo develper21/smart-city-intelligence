@@ -18,24 +18,18 @@ import {
   Activity,
   Users,
   Settings,
-  Shield,
-  Search,
-  Bell,
-  Sun,
-  Moon,
-  Home,
   LogOut,
 } from "lucide-react";
-import { mockCameras, mockAlerts } from "@/data/mockData";
-import { useTheme } from "@/contexts/ThemeContext";
+import { surveillanceAPI, Alert, Camera } from "@/services/api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useNotifications } from "@/contexts/NotificationContext";
 import { toast } from "sonner";
 
 interface CommandMenuProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectAlert?: (alert: any) => void;
-  onSelectCamera?: (camera: any) => void;
+  onSelectAlert?: (alert: Alert) => void;
+  onSelectCamera?: (camera: Camera) => void;
 }
 
 export function CommandMenu({
@@ -45,8 +39,16 @@ export function CommandMenu({
   onSelectCamera,
 }: CommandMenuProps) {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
   const { logout, user } = useAuth();
+  const { setSelectedAlert } = useNotifications();
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    surveillanceAPI.getCameras().then(setCameras).catch(() => undefined);
+    surveillanceAPI.getAlerts({ limit: 5 }).then(({ alerts }) => setAlerts(alerts)).catch(() => undefined);
+  }, [open]);
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -134,7 +136,7 @@ export function CommandMenu({
 
         {/* Live Cameras */}
         <CommandGroup heading="Surveillance Cameras">
-          {mockCameras.map((cam) => (
+          {cameras.map((cam) => (
             <CommandItem
               key={cam.id}
               onSelect={() =>
@@ -159,13 +161,16 @@ export function CommandMenu({
 
         {/* Active Alerts */}
         <CommandGroup heading="Active Security Alerts">
-          {mockAlerts.slice(0, 4).map((alt) => (
+          {alerts.map((alt) => (
             <CommandItem
               key={alt.id}
               onSelect={() =>
                 handleRun(() => {
                   if (onSelectAlert) onSelectAlert(alt);
-                  else navigate("/alerts");
+                  else {
+                    setSelectedAlert(alt);
+                    navigate("/alerts");
+                  }
                 })
               }
               className="flex items-center justify-between cursor-pointer"
@@ -185,18 +190,6 @@ export function CommandMenu({
 
         {/* Fast Actions */}
         <CommandGroup heading="Operator Actions">
-          <CommandItem
-            onSelect={() =>
-              handleRun(() => {
-                toggleTheme();
-                toast.info(`Switched theme to ${theme === "dark" ? "light" : "dark"} mode`);
-              })
-            }
-            className="flex items-center gap-2 cursor-pointer"
-          >
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            <span>Toggle Theme ({theme === "dark" ? "Light Mode" : "Dark Mode"})</span>
-          </CommandItem>
           {user && (
             <CommandItem
               onSelect={() =>
