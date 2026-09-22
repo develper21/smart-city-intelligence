@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert } from "@/data/mockData";
+import { Alert } from "@/services/api";
 import {
   Dialog,
   DialogContent,
@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 
 interface IncidentDetailsModalProps {
-  incident: any | null;
+  incident: Alert | null;
   isOpen: boolean;
   onClose: () => void;
 }
