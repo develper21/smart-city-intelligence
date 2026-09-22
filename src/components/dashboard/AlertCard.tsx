@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert } from "@/data/mockData";
+import { Alert } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { RiskBadge } from "./RiskIndicator";
 import {
