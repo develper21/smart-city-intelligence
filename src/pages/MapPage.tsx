@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { InteractiveMap } from "@/components/dashboard/InteractiveMap";
-import { mockMapPins, mockAlerts, Alert, MapPin } from "@/data/mockData";
+import { surveillanceAPI, Alert, MapPin } from "@/services/api";
 import { AlertCard } from "@/components/dashboard/AlertCard";
 import { AlertDetailsModal } from "@/components/dashboard/AlertDetailsModal";
 import { Button } from "@/components/ui/button";
@@ -24,18 +24,31 @@ export default function MapPage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedAlertForModal, setSelectedAlertForModal] = useState<Alert | null>(null);
+  const [pins, setPins] = useState<MapPin[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
 
-  const activeAlerts = mockAlerts.filter((a) => a.status !== "resolved");
+  useEffect(() => {
+    surveillanceAPI
+      .getMapPins()
+      .then(setPins)
+      .catch(() => toast.error("Backend se map pins fetch nahi hue"));
+    surveillanceAPI
+      .getAlerts({ limit: 100 })
+      .then(({ alerts }) => setAlerts(alerts.filter((a) => a.status !== "resolved")))
+      .catch(() => undefined);
+  }, []);
+
+  const activeAlerts = alerts;
 
   const handlePinInspect = (pin: MapPin) => {
-    // Find matching alert or generate one from pin data
-    const matched = mockAlerts.find((a) => a.location === pin.location) || {
+    // Matching alert dhundo ya pin data se synthetic alert banao
+    const matched = alerts.find((a) => a.location === pin.location) || {
       id: `MAP-ALT-${pin.id}`,
       type: pin.type,
       location: pin.location,
       cameraId: `CAM-00${pin.id}`,
       riskLevel: pin.riskLevel,
-      timestamp: "Just now",
+      timestamp: new Date().toISOString(),
       description: `Active anomaly vector flagged on satellite GIS grid at ${pin.location}.`,
       status: "active" as const,
     };
@@ -89,7 +102,7 @@ export default function MapPage() {
         {/* Map taking 100% of viewport */}
         <div className="flex-1 w-full h-full">
           <InteractiveMap
-            pins={mockMapPins}
+            pins={pins}
             onInspectAlert={handlePinInspect}
             className="h-full w-full rounded-none border-none"
           />
@@ -154,7 +167,7 @@ export default function MapPage() {
         {/* Main Map Canvas */}
         <div className="flex-1 min-w-0">
           <InteractiveMap
-            pins={mockMapPins}
+            pins={pins}
             onInspectAlert={handlePinInspect}
             className="h-[calc(100vh-210px)] min-h-[560px]"
           />
@@ -194,24 +207,24 @@ export default function MapPage() {
               </h3>
               <div className="grid grid-cols-2 gap-2.5 text-center">
                 <div className="p-3 rounded-xl bg-secondary/40 border border-border/60">
-                  <p className="text-xl font-extrabold text-primary font-mono">{mockMapPins.length}</p>
+                  <p className="text-xl font-extrabold text-primary font-mono">{pins.length}</p>
                   <p className="text-[11px] text-muted-foreground font-medium">Mapped Beacons</p>
                 </div>
                 <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/25">
                   <p className="text-xl font-extrabold text-destructive font-mono">
-                    {mockMapPins.filter((p) => p.riskLevel === "critical").length}
+                    {pins.filter((p) => p.riskLevel === "critical").length}
                   </p>
                   <p className="text-[11px] text-destructive font-medium">Critical</p>
                 </div>
                 <div className="p-3 rounded-xl bg-warning/10 border border-warning/25">
                   <p className="text-xl font-extrabold text-warning font-mono">
-                    {mockMapPins.filter((p) => p.riskLevel === "high").length}
+                    {pins.filter((p) => p.riskLevel === "high").length}
                   </p>
                   <p className="text-[11px] text-warning font-medium">High Risk</p>
                 </div>
                 <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
                   <p className="text-xl font-extrabold text-emerald-400 font-mono">
-                    {mockMapPins.filter((p) => p.riskLevel === "low").length}
+                    {pins.filter((p) => p.riskLevel === "low").length}
                   </p>
                   <p className="text-[11px] text-emerald-400 font-medium">Normal / Low</p>
                 </div>
