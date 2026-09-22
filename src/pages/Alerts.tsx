@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AlertCard } from "@/components/dashboard/AlertCard";
 import { AlertDetailsModal } from "@/components/dashboard/AlertDetailsModal";
-import { mockAlerts, Alert } from "@/data/mockData";
+import { Alert, surveillanceAPI } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -16,24 +17,38 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Search,
   Filter,
-  Bell,
-  BellOff,
-  CheckCircle,
+  ShieldAlert,
   Volume2,
   VolumeX,
-  Sparkles,
-  ShieldAlert,
   CheckCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function Alerts() {
-  const [alertsList, setAlertsList] = useState<Alert[]>(mockAlerts);
+  const { user } = useAuth();
+  const [alertsList, setAlertsList] = useState<Alert[]>([]);
+  const [loading, setLoading] = useState(true);
   const [riskFilter, setRiskFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sirenActive, setSirenActive] = useState(false);
   const [selectedAlertForModal, setSelectedAlertForModal] = useState<Alert | null>(null);
+
+  const loadAlerts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { alerts } = await surveillanceAPI.getAlerts({ limit: 200 });
+      setAlertsList(alerts);
+    } catch {
+      toast.error("Backend se alerts fetch nahi hue");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAlerts();
+  }, [loadAlerts]);
 
   const filterAlerts = (status: string) => {
     return alertsList.filter((alert) => {
@@ -48,17 +63,32 @@ export default function Alerts() {
     });
   };
 
-  const handleResolveAlert = (id: string) => {
-    setAlertsList((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, status: "resolved" } : item))
-    );
+  const handleResolveAlert = async (id: string) => {
+    const target = alertsList.find((a) => a.id === id);
+    if (!target?.numericId) return;
+    try {
+      await surveillanceAPI.resolveAlert(target.numericId, user?.badgeId || "operator");
+      setAlertsList((prev) => prev.map((item) => (item.id === id ? { ...item, status: "resolved" } : item)));
+      toast.success(`Alert ${id} resolved`);
+    } catch {
+      toast.error("Resolve failed — supervisor/admin clearance required");
+    }
   };
 
-  const handleResolveAllActive = () => {
-    setAlertsList((prev) =>
-      prev.map((item) => (item.status === "active" ? { ...item, status: "resolved" } : item))
-    );
-    toast.success("All Active Alerts Marked as Resolved");
+  const handleResolveAllActive = async () => {
+    const activeIds = alertsList
+      .filter((a) => a.status === "active" && a.numericId)
+      .map((a) => a.numericId!) as number[];
+    if (activeIds.length === 0) return;
+    try {
+      await surveillanceAPI.bulkResolveAlerts(activeIds, user?.badgeId || "operator");
+      setAlertsList((prev) =>
+        prev.map((item) => (item.status === "active" ? { ...item, status: "resolved" } : item))
+      );
+      toast.success(`${activeIds.length} active alerts resolved via backend`);
+    } catch {
+      toast.error("Bulk resolve failed — admin/supervisor role required");
+    }
   };
 
   const handleToggleSiren = () => {
@@ -86,7 +116,7 @@ export default function Alerts() {
               Security Alerts Triage Hub
             </h1>
             <Badge variant="outline" className="border-destructive/40 text-destructive text-xs font-mono">
-              REAL-TIME QUEUE
+              LIVE BACKEND QUEUE
             </Badge>
           </div>
           <p className="text-muted-foreground text-xs sm:text-sm mt-1">
@@ -198,7 +228,7 @@ export default function Alerts() {
               />
             ))}
           </div>
-          {activeAlerts.length === 0 && (
+          {activeAlerts.length === 0 && !loading && (
             <div className="p-12 text-center rounded-2xl border border-dashed border-border/70 glass-card">
               <ShieldAlert className="h-10 w-10 text-emerald-500/50 mx-auto mb-2" />
               <p className="font-semibold text-sm">No Active Security Alerts</p>
@@ -220,7 +250,7 @@ export default function Alerts() {
               />
             ))}
           </div>
-          {investigatingAlerts.length === 0 && (
+          {investigatingAlerts.length === 0 && !loading && (
             <div className="p-12 text-center rounded-2xl border border-dashed border-border/70 glass-card">
               <p className="text-xs text-muted-foreground">No alerts currently under active field investigation.</p>
             </div>
