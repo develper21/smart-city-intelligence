@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StatsCard } from "@/components/dashboard/StatsCard";
 import { OperatorDetailsModal } from "@/components/dashboard/OperatorDetailsModal";
+import { surveillanceAPI, Operator } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,68 +22,27 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Users, UserPlus, Shield, Activity, Search, Radio, PhoneCall } from "lucide-react";
+import { Users, UserPlus, Shield, Activity, Search, Radio } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const initialOperators = [
-  {
-    id: "OP-001",
-    name: "Rajesh Kumar",
-    role: "Senior Operator",
-    status: "online",
-    zone: "Zone A (North)",
-    alerts: 3,
-    lastActive: "Active now",
-  },
-  {
-    id: "OP-002",
-    name: "Priya Sharma",
-    role: "Tactical Dispatcher",
-    status: "online",
-    zone: "Zone B (Central)",
-    alerts: 5,
-    lastActive: "Active now",
-  },
-  {
-    id: "OP-003",
-    name: "Amit Patel",
-    role: "Surveillance Officer",
-    status: "offline",
-    zone: "Zone C (Highway)",
-    alerts: 0,
-    lastActive: "2 hours ago",
-  },
-  {
-    id: "OP-004",
-    name: "Sneha Reddy",
-    role: "Duty Supervisor",
-    status: "online",
-    zone: "All City Sectors",
-    alerts: 12,
-    lastActive: "Active now",
-  },
-  {
-    id: "OP-005",
-    name: "Vikram Singh",
-    role: "Response Coordinator",
-    status: "busy",
-    zone: "Zone D (Industrial)",
-    alerts: 2,
-    lastActive: "5 min ago",
-  },
-];
-
 export default function Operators() {
-  const [operators, setOperators] = useState(initialOperators);
+  const [operators, setOperators] = useState<Operator[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedOperator, setSelectedOperator] = useState<any | null>(null);
+  const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
 
   // New Operator Form
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState("Surveillance Officer");
-  const [newZone, setNewZone] = useState("Zone A (North)");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+
+  useEffect(() => {
+    surveillanceAPI
+      .getOperators()
+      .then(setOperators)
+      .catch(() => toast.error("Backend se operator roster fetch nahi hua"));
+  }, []);
 
   const filteredOperators = operators.filter(
     (op) =>
@@ -92,26 +52,35 @@ export default function Operators() {
       op.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleAddOperator = (e: React.FormEvent) => {
+  const handleAddOperator = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newName) return;
-
-    const newOp = {
-      id: `OP-00${operators.length + 1}`,
-      name: newName,
-      role: newRole,
-      status: "online",
-      zone: newZone,
-      alerts: 0,
-      lastActive: "Active now",
-    };
-
-    setOperators([newOp, ...operators]);
-    setAddModalOpen(false);
-    setNewName("");
-    toast.success("Officer Provisioned to Console Roster", {
-      description: `${newName} assigned to ${newZone}.`,
-    });
+    if (!newName || !newEmail || !newPassword) {
+      toast.error("Name, email aur password required hain");
+      return;
+    }
+    try {
+      const username = newEmail.split("@")[0].replace(/[^a-zA-Z0-9._-]/g, "") || `op${Date.now()}`;
+      await surveillanceAPI.register({
+        username,
+        email: newEmail,
+        password: newPassword,
+        name: newName,
+        role: "operator",
+      });
+      toast.success("Officer Provisioned on Backend", {
+        description: `${newName} registered with operator clearance.`,
+      });
+      setAddModalOpen(false);
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      const roster = await surveillanceAPI.getOperators();
+      setOperators(roster);
+    } catch {
+      toast.error("Provisioning failed", {
+        description: "Email/username already registered ya admin clearance required.",
+      });
+    }
   };
 
   return (
@@ -140,12 +109,7 @@ export default function Operators() {
 
       {/* Stats Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard
-          title="Total Duty Personnel"
-          value={operators.length}
-          subtitle="Authorized Roster"
-          icon={Users}
-        />
+        <StatsCard title="Total Duty Personnel" value={operators.length} subtitle="Authorized Roster" icon={Users} />
         <StatsCard
           title="Active On-Shift"
           value={operators.filter((o) => o.status === "online").length}
@@ -154,18 +118,18 @@ export default function Operators() {
           variant="success"
         />
         <StatsCard
-          title="Incidents Assigned"
-          value="22 Active"
-          subtitle="Under active triage"
+          title="Alerts Handled"
+          value={operators.reduce((s, o) => s + o.alerts, 0)}
+          subtitle="Cumulative triage load"
           icon={Activity}
           variant="info"
         />
         <StatsCard
-          title="Mean Response"
-          value="1.4 min"
-          subtitle="Triage SLA: < 3 min"
+          title="On Break / Offline"
+          value={operators.filter((o) => o.status !== "online").length}
+          subtitle="Awaiting shift return"
           icon={Radio}
-          variant="success"
+          variant="warning"
         />
       </div>
 
@@ -189,7 +153,7 @@ export default function Operators() {
               <TableHead className="text-xs font-mono">Badge ID</TableHead>
               <TableHead className="text-xs">Role</TableHead>
               <TableHead className="text-xs">Assigned Sector</TableHead>
-              <TableHead className="text-xs">Active Alerts</TableHead>
+              <TableHead className="text-xs">Alerts Handled</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="text-right text-xs">Comms</TableHead>
             </TableRow>
@@ -204,6 +168,7 @@ export default function Operators() {
                 <TableCell>
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8 border border-border">
+                      {operator.avatar && <AvatarImage src={operator.avatar} />}
                       <AvatarFallback className="bg-primary/15 text-primary text-xs font-bold">
                         {operator.name.slice(0, 2).toUpperCase()}
                       </AvatarFallback>
@@ -214,9 +179,7 @@ export default function Operators() {
                     </div>
                   </div>
                 </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {operator.id}
-                </TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">{operator.id}</TableCell>
                 <TableCell className="text-xs font-medium">{operator.role}</TableCell>
                 <TableCell className="text-xs">{operator.zone}</TableCell>
                 <TableCell>
@@ -228,7 +191,7 @@ export default function Operators() {
                   <span
                     className={cn(
                       "text-[10px] font-mono px-2 py-0.5 rounded-full uppercase font-semibold",
-                      operator.status === "online" && "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+                      operator.status === "online" && "bg-emerald-500/15 text-emerald-600 border border-emerald-500/30",
                       operator.status === "busy" && "bg-warning/15 text-warning border border-warning/30",
                       operator.status === "offline" && "bg-muted text-muted-foreground"
                     )}
@@ -254,6 +217,11 @@ export default function Operators() {
             ))}
           </TableBody>
         </Table>
+        {filteredOperators.length === 0 && (
+          <div className="p-10 text-center">
+            <p className="text-sm font-semibold">No Officers Match Search</p>
+          </div>
+        )}
       </div>
 
       {/* Operator Details Modal */}
@@ -269,7 +237,7 @@ export default function Operators() {
           <DialogHeader>
             <DialogTitle className="text-lg font-bold">Provision Officer to Duty Roster</DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground">
-              Add an authorized console operator to the tactical roster.
+              Backend par naya operator account create hoga (operator clearance).
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddOperator} className="space-y-3 pt-2">
@@ -284,24 +252,30 @@ export default function Operators() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium">Operational Role</label>
+              <label className="text-xs font-medium">Official Email</label>
               <Input
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value)}
+                type="email"
+                placeholder="officer@smartcity.gov"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
                 className="text-xs bg-secondary/30"
+                required
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium">Assigned Sector</label>
+              <label className="text-xs font-medium">Temporary Passkey</label>
               <Input
-                value={newZone}
-                onChange={(e) => setNewZone(e.target.value)}
+                type="password"
+                placeholder="Set initial password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
                 className="text-xs bg-secondary/30"
+                required
               />
             </div>
             <DialogFooter className="pt-3">
               <Button type="submit" className="text-xs bg-primary text-primary-foreground w-full">
-                Register Officer
+                Register Officer on Backend
               </Button>
             </DialogFooter>
           </form>
