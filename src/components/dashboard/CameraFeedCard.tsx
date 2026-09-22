@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Camera } from "@/data/mockData";
+import { Camera } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { Video, MapPin, Clock, MoreVertical, Maximize2, Compass } from "lucide-react";
 import { Button } from "@/components/ui/button";
