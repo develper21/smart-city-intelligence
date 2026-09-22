@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
+    "build": "echo 'Express server — no compile step required' && exit 0",
     "test": "node --test tests/server.test.js"
   },
   "dependencies": {
