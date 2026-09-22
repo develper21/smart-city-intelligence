@@ -1,0 +1,27 @@
+{
+  "name": "civic-ai-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "End-to-end Node.js + Express backend powering the CIVIC-AI surveillance frontend (REST + WebSocket + auth + analytics).",
+  "type": "module",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "test": "node --test tests/server.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.0.1",
+    "ws": "^8.18.0"
+  }
+}
