@@ -25,27 +25,33 @@ import {
   Building2,
   Globe2,
   Server,
-  Sun,
-  Moon,
 } from "lucide-react";
-import { useTheme } from "@/contexts/ThemeContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { mockCameras, mockAlerts } from "@/data/mockData";
+import { surveillanceAPI, Camera, Alert } from "@/services/api";
 
 export default function LandingPage() {
   const navigate = useNavigate();
-  const { theme, toggleTheme } = useTheme();
-  const { user, demoLogin } = useAuth();
+  const { demoLogin } = useAuth();
   const [activeTab, setActiveTab] = useState(0);
 
-  // Live stats simulation counter
+  /* Backend se live stats */
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [totalAlerts, setTotalAlerts] = useState(0);
+
+  useEffect(() => {
+    surveillanceAPI.getCameras().then(setCameras).catch(() => undefined);
+    surveillanceAPI.getAlerts({ limit: 4 }).then(({ alerts, total }) => {
+      setAlerts(alerts);
+      setTotalAlerts(total);
+    }).catch(() => undefined);
+  }, []);
+
+  /* Live ticker — total backend alerts ka counter */
   const [liveEventsCount, setLiveEventsCount] = useState(14820);
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveEventsCount((prev) => prev + Math.floor(Math.random() * 3));
-    }, 2500);
-    return () => clearInterval(interval);
-  }, []);
+    if (totalAlerts > 0) setLiveEventsCount((prev) => Math.max(prev, totalAlerts));
+  }, [totalAlerts]);
 
   const features = [
     {
@@ -110,15 +116,6 @@ export default function LandingPage() {
           </nav>
 
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              className="h-9 w-9 text-muted-foreground hover:text-foreground"
-            >
-              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </Button>
-
             <Link to="/login">
               <Button variant="ghost" size="sm" className="text-xs sm:text-sm font-medium">
                 Operator Portal
@@ -195,13 +192,15 @@ export default function LandingPage() {
             </Button>
           </div>
 
-          {/* Real-time Telemetry Strip */}
+          {/* Real-time Telemetry Strip — live backend stats */}
           <div className="mt-14 max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-4 text-left">
             <div className="p-4 rounded-xl glass-card">
               <span className="text-xs text-muted-foreground font-mono">LIVE STREAMS</span>
-              <p className="text-2xl sm:text-3xl font-bold text-foreground mt-1">247 Cams</p>
+              <p className="text-2xl sm:text-3xl font-bold text-foreground mt-1">
+                {cameras.length || "—"} Cams
+              </p>
               <p className="text-[11px] text-emerald-400 mt-1 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" /> 94.2% AI Coverage
+                <CheckCircle2 className="h-3 w-3" /> Backend Connected
               </p>
             </div>
             <div className="p-4 rounded-xl glass-card">
@@ -212,9 +211,9 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="p-4 rounded-xl glass-card">
-              <span className="text-xs text-muted-foreground font-mono">INCIDENTS RESOLVED</span>
+              <span className="text-xs text-muted-foreground font-mono">INCIDENTS LOGGED</span>
               <p className="text-2xl sm:text-3xl font-bold text-foreground mt-1">
-                {liveEventsCount.toLocaleString()}
+                {totalAlerts || liveEventsCount}
               </p>
               <p className="text-[11px] text-primary mt-1 flex items-center gap-1">
                 <ShieldCheck className="h-3 w-3" /> Active 24/7 audit
@@ -278,8 +277,8 @@ export default function LandingPage() {
               <div className="lg:col-span-2 space-y-4">
                 <div className="relative aspect-video rounded-xl overflow-hidden border border-border/60 bg-black">
                   <img
-                    src={mockCameras[activeTab]?.thumbnail}
-                    alt={mockCameras[activeTab]?.name}
+                    src={cameras[activeTab]?.thumbnail || cameras[0]?.thumbnail}
+                    alt={cameras[activeTab]?.name || "Camera preview"}
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute inset-0 scanlines opacity-20" />
@@ -294,14 +293,14 @@ export default function LandingPage() {
                   </div>
                   {/* Camera Info Overlay */}
                   <div className="absolute top-3 left-3 bg-background/80 backdrop-blur-md px-2.5 py-1 rounded text-xs font-mono">
-                    <span className="text-emerald-400 font-bold">● {mockCameras[activeTab]?.id}</span>{" "}
-                    • {mockCameras[activeTab]?.name}
+                    <span className="text-emerald-400 font-bold">● {cameras[activeTab]?.id || cameras[0]?.id}</span>{" "}
+                    • {cameras[activeTab]?.name || cameras[0]?.name}
                   </div>
                 </div>
 
                 {/* Camera Tabs */}
                 <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                  {mockCameras.slice(0, 4).map((cam, idx) => (
+                  {cameras.slice(0, 4).map((cam, idx) => (
                     <button
                       key={cam.id}
                       onClick={() => setActiveTab(idx)}
@@ -325,12 +324,12 @@ export default function LandingPage() {
                     Active Priority Alerts
                   </span>
                   <Badge variant="destructive" className="text-[10px]">
-                    {mockAlerts.length} Active
+                    {alerts.length} Latest
                   </Badge>
                 </div>
 
                 <div className="space-y-2.5">
-                  {mockAlerts.slice(0, 3).map((alert) => (
+                  {alerts.slice(0, 3).map((alert) => (
                     <div
                       key={alert.id}
                       className="p-3 rounded-xl bg-secondary/30 border border-border/60 hover:border-primary/40 transition-colors"
