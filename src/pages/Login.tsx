@@ -24,35 +24,45 @@ export default function Login() {
   const navigate = useNavigate();
   const { login, demoLogin } = useAuth();
 
-  const [email, setEmail] = useState("rajesh.k@command.smartcity.gov");
-  const [password, setPassword] = useState("••••••••••••");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) {
-      toast.error("Please enter your official Badge ID or Email");
+    if (!email || !password) {
+      toast.error("Please enter your credentials and passkey");
       return;
     }
 
     setIsLoading(true);
-    setTimeout(async () => {
-      await login(email, password);
-      setIsLoading(false);
+    const ok = await login(email, password);
+    setIsLoading(false);
+    if (ok) {
       toast.success("Authentication Clearance Verified", {
         description: `Welcome back to Tactical Command, ${email.split("@")[0]}.`,
       });
       navigate("/dashboard");
-    }, 600);
+    } else {
+      toast.error("Authentication Failed", {
+        description: "Invalid credentials. Try demo: operator / operator123",
+      });
+    }
   };
 
-  const handleDemo = (role: "operator" | "supervisor" | "admin") => {
-    demoLogin(role);
-    toast.success(`Demo Access Granted as ${role.toUpperCase()}`, {
-      description: "Direct authorization bypass enabled for evaluation.",
-    });
-    navigate("/dashboard");
+  const handleDemo = async (role: "operator" | "supervisor" | "admin") => {
+    setIsLoading(true);
+    const ok = await demoLogin(role);
+    setIsLoading(false);
+    if (ok) {
+      toast.success(`Demo Access Granted as ${role.toUpperCase()}`, {
+        description: "Authenticated against the live backend.",
+      });
+      navigate("/dashboard");
+    } else {
+      toast.error("Demo login failed", { description: "Is the backend running on port 8000?" });
+    }
   };
 
   return (
@@ -142,29 +152,32 @@ export default function Login() {
               <Button
                 variant="outline"
                 size="sm"
+                disabled={isLoading}
                 className="text-xs h-9 flex flex-col items-center justify-center py-1 hover:border-primary/50"
                 onClick={() => handleDemo("operator")}
               >
                 <span className="font-semibold">Operator</span>
-                <span className="text-[9px] text-muted-foreground font-mono">Level 2</span>
+                <span className="text-[9px] text-muted-foreground font-mono">operator123</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
+                disabled={isLoading}
                 className="text-xs h-9 flex flex-col items-center justify-center py-1 hover:border-primary/50"
                 onClick={() => handleDemo("supervisor")}
               >
                 <span className="font-semibold">Supervisor</span>
-                <span className="text-[9px] text-muted-foreground font-mono">Level 3</span>
+                <span className="text-[9px] text-muted-foreground font-mono">supervisor123</span>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
+                disabled={isLoading}
                 className="text-xs h-9 flex flex-col items-center justify-center py-1 hover:border-primary/50"
                 onClick={() => handleDemo("admin")}
               >
                 <span className="font-semibold">Commander</span>
-                <span className="text-[9px] text-muted-foreground font-mono">Top Secret</span>
+                <span className="text-[9px] text-muted-foreground font-mono">admin123</span>
               </Button>
             </div>
           </div>
@@ -185,20 +198,20 @@ export default function Login() {
               </label>
               <Input
                 type="text"
-                placeholder="e.g. CSD-8842 or officer@smartcity.gov"
+                placeholder="operator ya officer@smartcity.gov"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="bg-secondary/30 h-10 text-sm"
                 required
               />
-            </div>
+              </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
-                  <Lock className="h-3.5 w-3.5 text-muted-foreground" />
-                  Security Passkey
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-foreground flex items-center gap-1.5">
+                    <Lock className="h-3.5 w-3.5 text-muted-foreground" />
+                    Security Passkey
+                  </label>
                 <span className="text-xs text-primary hover:underline cursor-pointer">
                   Forgot passkey?
                 </span>
