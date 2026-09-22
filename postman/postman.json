@@ -1,0 +1,760 @@
+{
+  "info": {
+    "_postman_id": "c2a2c2a2-0002-4b02-9b02-civicfrontend02",
+    "name": "CIVIC-AI Frontend Pages → API Map",
+    "description": "════════════════════════════════════════════════════════\n CIVIC-AI FRONTEND — HAR PAGE KA BACKEND API MAP\n════════════════════════════════════════════════════════\nYe collection document karta hai ki frontend (Vite dev server: http://localhost:8080) ka har page/backend feature kaunse REST endpoints + WebSocket se chalta hai. Postman me testing ke liye har page ke exact requests ready hain.\n\n▶ FRONTEND API BASE\nsrc/services/api.ts → VITE_API_URL env var, default http://localhost:8000/api\n\n▶ AUTH FLOW (frontend jaise hi)\n1. Login → tokens localStorage me save hote hain (civic-ai-access-token / civic-ai-refresh-token)\n2. Har request par axios interceptor `Authorization: Bearer <token>` lagata hai\n3. 401 aane par auto /auth/refresh retry hota hai\n4. Page load par GET /auth/me se session restore\n\n▶ SETUP\nPehle 'Auth → Login' folder me se login chalao — tokens auto-save honge.\n\n▶ PAGE ROUTES (browser)\n/landing • /login • /signup • /dashboard • /live-feeds • /alerts • /map • /analytics • /incidents • /operators • /settings • * (404)\n\n▶ REAL-TIME\nws://localhost:8000/ws — naye alerts ka broadcast (new_alert), alert updates, camera status changes, settings updates.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "civic-ai"
+  },
+  "variable": [
+    { "key": "api", "value": "http://localhost:8000/api", "type": "string" },
+    { "key": "frontend", "value": "http://localhost:8080", "type": "string" },
+    { "key": "access_token", "value": "", "type": "string" },
+    { "key": "refresh_token", "value": "", "type": "string" },
+    { "key": "page_alert_id", "value": "1", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{access_token}}", "type": "string" }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth · Login & Signup Pages",
+      "description": "Pages: /login, /signup, /landing (demo buttons)",
+      "item": [
+        {
+          "name": "→ Login page: Operator Sign In (submit)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "  pm.collectionVariables.set(\"access_token\", json.access_token);",
+                  "  pm.collectionVariables.set(\"refresh_token\", json.refresh_token);",
+                  "  console.log(\"✅ Frontend jaise tokens save ho gaye\");",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"operator\",\n  \"password\": \"operator123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/auth/login",
+              "host": ["{{api}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Login form ya 1-click demo buttons yahi call karte hain. Identifier username YA email ho sakta hai (api.ts `includes('@')` check karta hai).\n\nDemo creds: operator/operator123 • supervisor/supervisor123 • admin/admin123"
+          }
+        },
+        {
+          "name": "→ Signup page: Officer Provisioning (submit)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"signup.test\",\n  \"email\": \"signup.test@smartcity.gov\",\n  \"password\": \"test1234\",\n  \"name\": \"Signup Test Officer\",\n  \"badge\": \"SEC-5511\",\n  \"department\": \"Urban CCTV Command Unit\",\n  \"zone\": \"Sector 1 (Metropolitan)\",\n  \"role\": \"operator\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/auth/register",
+              "host": ["{{api}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "Signup form submit → ye request → success par auto-login (register ke turant baad login call hoti hai AuthContext me).\n409 = username/email already taken (frontend error toast dikhata hai)."
+          }
+        },
+        {
+          "name": "→ Page load: session restore (GET /auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/auth/me",
+              "host": ["{{api}}"],
+              "path": ["auth", "me"]
+            },
+            "description": "App load par AuthContext localStorage token se session restore karta hai — token valid nahi to user null (login pe redirect)."
+          }
+        },
+        {
+          "name": "→ Landing page: hero live stats",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/cameras",
+              "host": ["{{api}}"],
+              "path": ["cameras"]
+            },
+            "description": "LandingPage hero telemetry strip: cameras count (LIVE STREAMS card) + /alerts se total incidents (INCIDENTS LOGGED card) + preview frame thumbnails aur latest alerts ticker."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dashboard · /dashboard",
+      "description": "Executive Tactical Dashboard — load par 5 parallel calls + WebSocket live alerts",
+      "item": [
+        {
+          "name": "loadAll(): GET cameras",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/cameras",
+              "host": ["{{api}}"],
+              "path": ["cameras"]
+            },
+            "description": "Dashboard 'Live Optical Surveillance Matrix' grid (first 6 cameras render hote hain)."
+          }
+        },
+        {
+          "name": "loadAll(): GET alerts (limit 12)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+                  "const first = pm.response.json().alerts[0];",
+                  "if (first) pm.collectionVariables.set(\"page_alert_id\", String(first.id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts?limit=12",
+              "host": ["{{api}}"],
+              "path": ["alerts"],
+              "query": [{ "key": "limit", "value": "12" }]
+            },
+            "description": "Right column 'Live Alerts Queue' (top 5 dikhte hain) + Active Alerts KPI card."
+          }
+        },
+        {
+          "name": "loadAll(): GET analytics/summary (KPI cards)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/summary",
+              "host": ["{{api}}"],
+              "path": ["analytics", "summary"]
+            },
+            "description": "KPI Stats Grid: Active Cameras, Active Alerts, Resolved Today, (Neural Response perf se)."
+          }
+        },
+        {
+          "name": "loadAll(): GET analytics/hourly-activity (chart)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/hourly-activity",
+              "host": ["{{api}}"],
+              "path": ["analytics", "hourly-activity"]
+            },
+            "description": "'24-Hour Municipal Incident & Triage Volume' chart."
+          }
+        },
+        {
+          "name": "loadAll(): GET analytics/incidents-over-time (7d chart)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/incidents-over-time?days=7",
+              "host": ["{{api}}"],
+              "path": ["analytics", "incidents-over-time"],
+              "query": [{ "key": "days", "value": "7" }]
+            },
+            "description": "'7-Day Incident & Resolution Trend' chart."
+          }
+        },
+        {
+          "name": "loadAll(): GET analytics/performance (FPS card)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/performance",
+              "host": ["{{api}}"],
+              "path": ["analytics", "performance"]
+            },
+            "description": "'AI Pipeline Speed' KPI card (FPS + latency)."
+          }
+        },
+        {
+          "name": "Action: Simulate Alert (drill button)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"intrusion\",\n  \"message\": \"Manual drill trigger: synthetic event injected from Command Console.\",\n  \"camera_id\": \"CAM-001\",\n  \"location\": \"Sector 12, Gate A\",\n  \"risk_level\": \"high\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/alerts",
+              "host": ["{{api}}"],
+              "path": ["alerts"]
+            },
+            "description": "'Simulate Alert' button — random camera + type/risk ke saath alert inject karta hai. NotificationContext pehle GET /cameras se real camera pick karta hai.\n\n⚠ WebSocket active ho to sab clients par instant toast + siren."
+          }
+        },
+        {
+          "name": "Action: Resolve alert (AlertCard button)",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts/{{page_alert_id}}/resolve?acknowledged_by=admin",
+              "host": ["{{api}}"],
+              "path": ["alerts", "{{page_alert_id}}", "resolve"],
+              "query": [{ "key": "acknowledged_by", "value": "admin" }]
+            },
+            "description": "AlertCard resolve — supervisor/admin token chahiye (operator → 403, frontend error toast)."
+          }
+        },
+        {
+          "name": "Sidebar badge: active alerts count (30s poll)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts?status=active&limit=1",
+              "host": ["{{api}}"],
+              "path": ["alerts"],
+              "query": [
+                { "key": "status", "value": "active" },
+                { "key": "limit", "value": "1" }
+              ]
+            },
+            "description": "Sidebar 'Security Alerts' link ka live badge (total field) — har 30s me poll."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Live Feeds · /live-feeds",
+      "description": "Surveillance Video Wall — cameras + PTZ + stream lifecycle",
+      "item": [
+        {
+          "name": "Page load: GET cameras",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/cameras",
+              "host": ["{{api}}"],
+              "path": ["cameras"]
+            },
+            "description": "Grid/Wall/List views ka data. Client-side filters: status (online/offline/warning), zone (Zone A-D), search (name/location/id)."
+          }
+        },
+        {
+          "name": "Sync Feeds button: GET cameras (refresh)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/cameras?status=online",
+              "host": ["{{api}}"],
+              "path": ["cameras"],
+              "query": [{ "key": "status", "value": "online" }]
+            },
+            "description": "'Sync Feeds' button + server-side status filter example."
+          }
+        },
+        {
+          "name": "Stream modal: GET camera by string id",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/cameras/by-id/CAM-001",
+              "host": ["{{api}}"],
+              "path": ["cameras", "by-id", "CAM-001"]
+            },
+            "description": "CameraStreamModal ke liye camera detail."
+          }
+        },
+        {
+          "name": "Stream modal: camera alert history",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/cameras/1/history",
+              "host": ["{{api}}"],
+              "path": ["cameras", "1", "history"]
+            },
+            "description": "Modal me historical alert logs (last 20)."
+          }
+        },
+        {
+          "name": "PTZ controls (pan/tilt/zoom buttons)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pan\": 10,\n  \"tilt\": 0,\n  \"zoom\": 1.5\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/cameras/1/ptz",
+              "host": ["{{api}}"],
+              "path": ["cameras", "1", "ptz"]
+            },
+            "description": "Modal ke PTZ direction pad + zoom slider — har move ye call bhejti hai. Permission: acknowledge."
+          }
+        },
+        {
+          "name": "RTSP stream lifecycle (start/stop)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/start-stream?stream_id=camera-1&source=rtsp://civic.local/stream/cam001&location=Sector 12, Gate A",
+              "host": ["{{api}}"],
+              "path": ["start-stream"],
+              "query": [
+                { "key": "stream_id", "value": "camera-1" },
+                { "key": "source", "value": "rtsp://civic.local/stream/cam001" },
+                { "key": "location", "value": "Sector 12, Gate A" }
+              ]
+            },
+            "description": "Stream attach karne par system-status metrics me active_streams badhta hai. Stop: POST /api/stop-stream?stream_id=camera-1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Alerts · /alerts",
+      "description": "Threat Triage Hub — full CRUD queue",
+      "item": [
+        {
+          "name": "Page load: GET all alerts (limit 200)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts?limit=200",
+              "host": ["{{api}}"],
+              "path": ["alerts"],
+              "query": [{ "key": "limit", "value": "200" }]
+            },
+            "description": "Triage tabs (Active/Investigating/Resolved) client-side filter karte hain; risk/type/search filters bhi client-side."
+          }
+        },
+        {
+          "name": "Inspect modal: GET single alert",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts/{{page_alert_id}}",
+              "host": ["{{api}}"],
+              "path": ["alerts", "{{page_alert_id}}"]
+            },
+            "description": "AlertDetailsModal data."
+          }
+        },
+        {
+          "name": "Row action: Acknowledge",
+          "request": {
+            "method": "PUT",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts/{{page_alert_id}}/acknowledge?acknowledged_by=admin",
+              "host": ["{{api}}"],
+              "path": ["alerts", "{{page_alert_id}}", "acknowledge"],
+              "query": [{ "key": "acknowledged_by", "value": "admin" }]
+            },
+            "description": "Status → investigating. Operator bhi kar sakta hai."
+          }
+        },
+        {
+          "name": "Action: Resolve All Active (bulk)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"alert_ids\": [1, 2, 3, 4]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/alerts/bulk-resolve?acknowledged_by=admin",
+              "host": ["{{api}}"],
+              "path": ["alerts", "bulk-resolve"],
+              "query": [{ "key": "acknowledged_by", "value": "admin" }]
+            },
+            "description": "'Resolve All Active' button — sab active alerts ke numeric ids bhejta hai. Permission: resolve (supervisor/admin)."
+          }
+        },
+        {
+          "name": "Header badge: GET alerts/summary",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts/summary",
+              "host": ["{{api}}"],
+              "path": ["alerts", "summary"]
+            },
+            "description": "Active incidents count pill + by-risk breakdown."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Map · /map",
+      "description": "GIS Digital Twin — pins + alerts feed",
+      "item": [
+        {
+          "name": "Page load: GET map-pins",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/map-pins",
+              "host": ["{{api}}"],
+              "path": ["analytics", "map-pins"]
+            },
+            "description": "Leaflet map markers — sirf non-resolved alerts, camera coordinates ke saath. Sidebar 'Geospatial Threat Matrix' stats isi se calculate hote hain."
+          }
+        },
+        {
+          "name": "Page load: GET alerts (sidebar feed)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts?limit=100",
+              "host": ["{{api}}"],
+              "path": ["alerts"],
+              "query": [{ "key": "limit", "value": "100" }]
+            },
+            "description": "Sidebar 'Sector Incidents' feed (non-resolved filter client-side). Pin click → matching alert inspect modal."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Analytics · /analytics",
+      "description": "Crime Intelligence — saare charts (timeRange change par refetch)",
+      "item": [
+        {
+          "name": "KPI cards: GET summary",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/summary",
+              "host": ["{{api}}"],
+              "path": ["analytics", "summary"]
+            },
+            "description": "Total Incidents, Resolution Rate, Avg Response Time cards."
+          }
+        },
+        {
+          "name": "Trend chart: incidents-over-time (days = 1|7|30|90)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/incidents-over-time?days=30",
+              "host": ["{{api}}"],
+              "path": ["analytics", "incidents-over-time"],
+              "query": [{ "key": "days", "value": "30" }]
+            },
+            "description": "Time-horizon selector (24h/7d/30d/90d) isi `days` param ko control karta hai."
+          }
+        },
+        {
+          "name": "Bar chart: alert-types",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/alert-types",
+              "host": ["{{api}}"],
+              "path": ["analytics", "alert-types"]
+            },
+            "description": "'Alert Types Distribution' bar chart."
+          }
+        },
+        {
+          "name": "Area chart: hourly-activity",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/hourly-activity",
+              "host": ["{{api}}"],
+              "path": ["analytics", "hourly-activity"]
+            },
+            "description": "'Hourly Activity' chart (last 7 days)."
+          }
+        },
+        {
+          "name": "Pie chart: resolution-status",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/resolution-status",
+              "host": ["{{api}}"],
+              "path": ["analytics", "resolution-status"]
+            },
+            "description": "'Resolution Status' pie + legend."
+          }
+        },
+        {
+          "name": "Performance Metrics bars: GET performance",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/performance",
+              "host": ["{{api}}"],
+              "path": ["analytics", "performance"]
+            },
+            "description": "System Uptime / Camera Coverage / Alert Processing progress bars + FPS card."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Incidents · /incidents",
+      "description": "Audit Registry — full list + CSV export data",
+      "item": [
+        {
+          "name": "Page load: GET alerts (limit 300 = registry)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts?limit=300",
+              "host": ["{{api}}"],
+              "path": ["alerts"],
+              "query": [{ "key": "limit", "value": "300" }]
+            },
+            "description": "Incident table rows. Search/status filters client-side. 'Export Audit Dossier (.CSV)' button inhi rows se client-side CSV banata hai."
+          }
+        },
+        {
+          "name": "Stats cards: GET summary",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/summary",
+              "host": ["{{api}}"],
+              "path": ["analytics", "summary"]
+            },
+            "description": "Total/Active/Resolved/Rate stats derived client-side bhi hote hain full list se."
+          }
+        },
+        {
+          "name": "Dossier modal: GET single alert",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts/{{page_alert_id}}",
+              "host": ["{{api}}"],
+              "path": ["alerts", "{{page_alert_id}}"]
+            },
+            "description": "IncidentDetailsModal — case file view."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Operators · /operators",
+      "description": "Duty Roster — roster + provisioning",
+      "item": [
+        {
+          "name": "Page load: GET operators roster",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/analytics/operators",
+              "host": ["{{api}}"],
+              "path": ["analytics", "operators"]
+            },
+            "description": "Roster table + Stats Cards (Total Personnel, Active On-Shift, Alerts Handled, On Break/Offline) isi se derive hote hain."
+          }
+        },
+        {
+          "name": "Provision Officer dialog: POST /auth/register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"new.roster.officer\",\n  \"email\": \"new.roster@smartcity.gov\",\n  \"password\": \"temp1234\",\n  \"name\": \"New Roster Officer\",\n  \"role\": \"operator\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/auth/register",
+              "host": ["{{api}}"],
+              "path": ["auth", "register"]
+            },
+            "description": "'Provision Officer' modal — naya backend account banata hai, phir roster refetch hoti hai. 409 agar email/username taken."
+          }
+        },
+        {
+          "name": "Admin check: GET /auth/users (directory)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/auth/users",
+              "host": ["{{api}}"],
+              "path": ["auth", "users"]
+            },
+            "description": "Full user directory (admin/supervisor token chahiye)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings · /settings",
+      "description": "System Config — load + save (admin)",
+      "item": [
+        {
+          "name": "Page load: GET settings",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/settings",
+              "host": ["{{api}}"],
+              "path": ["settings"]
+            },
+            "description": "General/Notifications/Privacy/System tabs ka data pre-fill."
+          }
+        },
+        {
+          "name": "System tab: GET system-status",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/system-status",
+              "host": ["{{api}}"],
+              "path": ["system-status"]
+            },
+            "description": "'Backend System Status' card — status, cameras total, active streams, uptime."
+          }
+        },
+        {
+          "name": "Save Changes button: PUT settings (admin)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"auto_refresh\": true,\n  \"telemetry_interval_s\": 30,\n  \"notifications\": { \"siren_volume\": 0.5 },\n  \"privacy\": { \"retention_days\": 90 },\n  \"ai\": { \"confidence_threshold\": 0.6 }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{api}}/settings",
+              "host": ["{{api}}"],
+              "path": ["settings"]
+            },
+            "description": "'Save Changes' — admin token required (warna 403 'Admin clearance required' toast). Partial body deep-merge hota hai. WebSocket: settings_updated."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Global · WebSocket & Notifications",
+      "description": "NotificationDrawer, TopNavbar bell, live siren",
+      "item": [
+        {
+          "name": "WS: live alert stream (ws://localhost:8000/ws)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "ws://localhost:8000/ws",
+              "host": ["localhost:8000"],
+              "path": ["ws"]
+            }
+          },
+          "protocolProfileBehavior": { "disableUrlEncoding": true },
+          "description": "Postman me: New → WebSocket Request, ye URL paste karo.\n\nMessages: { type, payload, timestamp }\n• new_alert → toast + siren + drawer me push + Dashboard queue me inject\n• alert_updated → badge/count updates\n• camera_status / camera_created / camera_updated / camera_deleted / camera_ptz\n• stream_started / stream_stopped\n• settings_updated\n• system_status (connect hote hi)\n\nTest: 'Simulate Alert' request chalao → is WS par new_alert ayega."
+        },
+        {
+          "name": "Drawer seed: GET alerts (limit 15)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{api}}/alerts?limit=15",
+              "host": ["{{api}}"],
+              "path": ["alerts"],
+              "query": [{ "key": "limit", "value": "15" }]
+            },
+            "description": "NotificationContext login ke turant baad drawer seed karta hai (15 latest, active wale unread)."
+          }
+        }
+      ]
+    }
+  ]
+}
