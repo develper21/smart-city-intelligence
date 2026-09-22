@@ -22,9 +22,10 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Operator } from "@/services/api";
 
 interface OperatorDetailsModalProps {
-  operator: any | null;
+  operator: Operator | null;
   isOpen: boolean;
   onClose: () => void;
 }
