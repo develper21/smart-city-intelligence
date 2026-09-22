@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
-  Camera as CameraIcon,
   AlertTriangle,
   Shield,
   Zap,
@@ -21,92 +20,110 @@ import {
   HourlyActivityChart,
 } from "@/components/dashboard/AnalyticsCharts";
 import { CameraStreamModal } from "@/components/dashboard/CameraStreamModal";
-import {
-  mockCameras,
-  mockAlerts,
-  mockStats,
-  mockIncidentsOverTime,
-  mockHourlyData,
-  Camera as CameraType,
-  Alert as AlertType,
-} from "@/data/mockData";
-import { surveillanceAPI, wsManager } from "@/services/api";
+import { surveillanceAPI, Camera, Alert, wsManager } from "@/services/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Link } from "react-router-dom";
 import { useNotifications } from "@/contexts/NotificationContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export default function Dashboard() {
-  const { triggerSimulatedAlert, setSelectedAlert } = useNotifications();
+  const { triggerSimulatedAlert, setSelectedAlert, wsConnected } = useNotifications();
+  const { user } = useAuth();
 
-  const [loading, setLoading] = useState(false);
-  const [wsConnected, setWsConnected] = useState(false);
-  const [cameras, setCameras] = useState<CameraType[]>(mockCameras);
-  const [alerts, setAlerts] = useState<AlertType[]>(mockAlerts);
-  const [selectedCameraForStream, setSelectedCameraForStream] = useState<CameraType | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [kpis, setKpis] = useState({
+    total_cameras: 0,
+    active_cameras: 0,
+    total_alerts: 0,
+    critical_alerts: 0,
+    resolved_today: 0,
+    fps: 0,
+  });
+  const [selectedCameraForStream, setSelectedCameraForStream] = useState<Camera | null>(null);
 
-  // Attempt backend connection gracefully, fall back to rich mock data
-  useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
-      try {
-        const [status, apiAlerts] = await Promise.allSettled([
-          surveillanceAPI.getSystemStatus(),
-          surveillanceAPI.getAlerts(10),
-        ]);
-
-        if (status.status === "fulfilled" && status.value?.streams) {
-          const streamList = Object.entries(status.value.streams).map(([id, s]) => ({
-            id,
-            name: s.location || `Stream ${id}`,
-            location: s.location || "Central Sector",
-            status: s.is_active ? ("online" as const) : ("offline" as const),
-            zone: "Zone A",
-            lastUpdated: "Just now",
-            thumbnail: mockCameras[0]?.thumbnail || "",
-          }));
-          if (streamList.length > 0 && isMounted) {
-            setCameras(streamList);
-          }
-        }
-
-        if (apiAlerts.status === "fulfilled" && apiAlerts.value?.alerts?.length > 0) {
-          const converted: AlertType[] = apiAlerts.value.alerts.map((a: any) => ({
-            id: `ALT-${a.id}`,
-            type: (a.event_type as any) || "intrusion",
-            location: a.message?.split("at ")[1] || "City Center",
-            cameraId: "CAM-001",
-            riskLevel: (a.risk_level as any) || "high",
-            timestamp: a.alert_time || new Date().toISOString(),
-            description: a.message || "Anomalous event flagged by neural engine.",
-            status: a.acknowledged ? "resolved" : "active",
-          }));
-          if (isMounted) setAlerts(converted);
-        }
-      } catch {
-        // Mock fallback active
-      }
-    };
-
-    loadData();
-
-    // WebSocket attempt
+  const loadAll = useCallback(async () => {
+    setLoading(true);
     try {
-      wsManager.connect((data) => {
-        if (isMounted) setWsConnected(true);
-      });
-    } catch {
-      // Offline fallback
-    }
+      const [cams, alertsRes, summary, hourly, overTime] = await Promise.all([
+        surveillanceAPI.getCameras(),
+        surveillanceAPI.getAlerts({ limit: 12 }),
+        surveillanceAPI.getSummary(),
+        surveillanceAPI.getHourlyActivity().catch(() => []),
+        surveillanceAPI.getIncidentsOverTime(7).catch(() => []),
+      ]);
 
+      setCameras(cams);
+      setAlerts(alertsRes.alerts);
+      const perf = await surveillanceAPI.getPerformance().catch(() => null);
+      setKpis({
+        total_cameras: summary.total_cameras ?? cams.length,
+        active_cameras: summary.active_cameras ?? cams.filter((c) => c.status !== "offline").length,
+        total_alerts: summary.total_alerts ?? alertsRes.total,
+        critical_alerts: summary.critical_alerts ?? 0,
+        resolved_today: summary.resolved_today ?? 0,
+        fps: perf?.fps ?? 0,
+      });
+      setHourlyData(hourly);
+      setOverTimeData(overTime);
+    } catch {
+      toast.error("Backend se data fetch nahi ho paya", {
+        description: "Server port 8000 par chal raha hai? `npm run server:dev` try karein.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const [hourlyData, setHourlyData] = useState<{ hour: string; incidents: number }[]>([]);
+  const [overTimeData, setOverTimeData] = useState<{ date: string; incidents: number; resolved: number }[]>([]);
+
+  /* WebSocket se naye alerts live inject karo */
+  useEffect(() => {
+    const off: () => void = wsManager.on((msg) => {
+      if (msg.type === "new_alert" && msg.payload?.alert) {
+        const a = msg.payload.alert;
+        setAlerts((prev) => {
+          if (prev.some((p) => p.numericId === a.id)) return prev;
+          return [
+            {
+              id: a.event_ref || `ALT-${a.id}`,
+              numericId: a.id,
+              type: a.event_type,
+              location: a.location,
+              cameraId: a.camera_id,
+              riskLevel: a.risk_level,
+              timestamp: a.alert_time,
+              description: a.message,
+              status: "active",
+            },
+            ...prev,
+          ];
+        });
+      }
+    });
     return () => {
-      isMounted = false;
-      try {
-        wsManager.disconnect();
-      } catch {}
+      off();
     };
   }, []);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const handleResolve = async (alertId: string) => {
+    const target = alerts.find((a) => a.id === alertId);
+    if (!target?.numericId) return;
+    try {
+      await surveillanceAPI.resolveAlert(target.numericId, user?.badgeId || "operator");
+      setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, status: "resolved" } : a)));
+      toast.success(`Alert ${alertId} resolved via backend`);
+    } catch {
+      toast.error("Resolve failed", { description: "Supervisor/Admin clearance required." });
+    }
+  };
 
   const activeAlerts = alerts.filter((a) => a.status === "active");
   const criticalCount = activeAlerts.filter((a) => a.riskLevel === "critical").length;
@@ -124,9 +141,6 @@ export default function Dashboard() {
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
                 Metropolitan Command & Control
               </h1>
-              <Badge variant="outline" className="border-primary/40 text-primary text-[10px] font-mono">
-                GRID LEVEL: OPTIMAL
-              </Badge>
             </div>
             <p className="text-muted-foreground text-xs sm:text-sm mt-0.5">
               Autonomous AI surveillance, automated incident dispatch, and urban safety telemetry.
@@ -147,9 +161,9 @@ export default function Dashboard() {
           </Button>
 
           <div className="glass-card px-3 py-1.5 rounded-xl flex items-center gap-2 border border-border/70">
-            <div className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-500 animate-pulse" : "bg-emerald-500"}`} />
+            <div className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground"}`} />
             <span className="text-xs font-mono font-medium">
-              {wsConnected ? "AI Engine Connected" : "Local AI Standby"}
+              {wsConnected ? "AI Engine Connected" : "AI Engine Offline"}
             </span>
           </div>
 
@@ -160,14 +174,13 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI Stats Grid */}
+      {/* KPI Stats Grid — live backend summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard
           title="Active Cameras"
-          value={`${mockStats.activeCameras}/${mockStats.totalCameras}`}
-          subtitle="94.8% City Coverage"
+          value={`${kpis.active_cameras}/${kpis.total_cameras}`}
+          subtitle="City Coverage"
           icon={Cctv}
-          trend={{ value: 4, isPositive: true }}
         />
         <StatsCard
           title="Active Alerts"
@@ -175,23 +188,20 @@ export default function Dashboard() {
           subtitle={`${criticalCount} Critical Flagged`}
           icon={Bell}
           variant={criticalCount > 0 ? "destructive" : "default"}
-          trend={{ value: 12, isPositive: false }}
         />
         <StatsCard
           title="Resolved Today"
-          value={mockStats.resolvedToday}
+          value={kpis.resolved_today}
           subtitle="Mean Triage < 2.3 min"
           icon={ShieldCheck}
           variant="success"
-          trend={{ value: 9, isPositive: true }}
         />
         <StatsCard
-          title="Neural Response"
-          value="18.2 ms"
+          title="AI Pipeline Speed"
+          value={`${kpis.fps.toFixed(1)} FPS`}
           subtitle="Real-time GPU Inference"
           icon={Zap}
           variant="info"
-          trend={{ value: 15, isPositive: true }}
         />
       </div>
 
@@ -203,7 +213,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <Cctv className="h-5 w-5 text-primary" />
               <h2 className="font-bold text-base sm:text-lg">Live Optical Surveillance Matrix</h2>
-              <span className="text-xs font-mono text-muted-foreground">({cameras.length} Active Feeds)</span>
+              <span className="text-xs font-mono text-muted-foreground">({cameras.length} Feeds)</span>
             </div>
 
             <div className="flex items-center gap-2">
@@ -211,7 +221,10 @@ export default function Dashboard() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => toast.info("Refreshed all camera sensor heartbeats")}
+                onClick={() => {
+                  loadAll();
+                  toast.info("Refreshed from backend");
+                }}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
@@ -224,23 +237,31 @@ export default function Dashboard() {
           </div>
 
           {/* Camera Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cameras.slice(0, 6).map((cam) => (
-              <CameraFeedCard
-                key={cam.id}
-                camera={cam}
-                onExpand={(c) => setSelectedCameraForStream(c)}
-              />
-            ))}
-          </div>
+          {loading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[...Array(6)].map((_, i) => (
+                <div key={i} className="glass-card rounded-xl aspect-video animate-pulse bg-muted/50" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {cameras.slice(0, 6).map((cam) => (
+                <CameraFeedCard
+                  key={cam.id}
+                  camera={cam}
+                  onExpand={(c) => setSelectedCameraForStream(c)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Incident Telemetry Trend Charts */}
           <div className="pt-2">
             <ChartCard
               title="24-Hour Municipal Incident & Triage Volume"
-              subtitle="Real-time neural detections vs. dispatch officer resolution rates."
+              subtitle="Live backend analytics — detections vs resolution rates."
             >
-              <IncidentsLineChart data={mockIncidentsOverTime} />
+              <HourlyActivityChart data={hourlyData} />
             </ChartCard>
           </div>
         </div>
@@ -265,24 +286,24 @@ export default function Dashboard() {
                 key={alert.id}
                 alert={alert}
                 onInspect={(a) => setSelectedAlert(a)}
-                onResolve={(id) => {
-                  setAlerts((prev) =>
-                    prev.map((item) =>
-                      item.id === id ? { ...item, status: "resolved" } : item
-                    )
-                  );
-                }}
+                onResolve={handleResolve}
               />
             ))}
+            {alerts.length === 0 && !loading && (
+              <div className="p-8 text-center glass-card rounded-xl">
+                <ShieldCheck className="h-8 w-8 text-success mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">No alerts — city grid nominal.</p>
+              </div>
+            )}
           </div>
 
-          {/* Hourly Incident Activity */}
+          {/* 7-Day Trend */}
           <div className="pt-2">
             <ChartCard
-              title="Peak Hourly Traffic & Density"
-              subtitle="Anomaly clusters throughout city patrol sectors."
+              title="7-Day Incident & Resolution Trend"
+              subtitle="Backend-aggregated municipal incident history."
             >
-              <HourlyActivityChart data={mockHourlyData} />
+              <IncidentsLineChart data={overTimeData} />
             </ChartCard>
           </div>
         </div>
