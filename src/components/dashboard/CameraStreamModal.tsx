@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Camera } from "@/data/mockData";
+import { Camera } from "@/services/api";
 import {
   Dialog,
   DialogContent,
