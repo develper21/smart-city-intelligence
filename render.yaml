@@ -1,0 +1,72 @@
+# ============================================================
+#  CIVIC-AI Backend — Render Blueprint
+# ============================================================
+#  Deploy: Render Dashboard → New → Blueprint → repo select karo.
+#  Ye file repo root me honi chahiye. Server `server/` folder me hai.
+#
+#  Deploy hone ke baad Render apne aap URL dega, jaise:
+#    https://civic-ai-api.onrender.com
+#  Wahi URL frontend ke .env.production me VITE_API_URL me daalna hai.
+# ============================================================
+
+services:
+  - type: web
+    name: smartcitysurveillance-service
+    runtime: node
+    plan: free
+    region: singapore          # India ke nazdeek — change: oregon, frankfurt, singapore
+    rootDir: server            # ← server folder ke andar se build/run
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+
+    # Free plan par service 15 min idle ke baad spin down hoti hai.
+    # Pehli request slow aayegi (cold start) — normal hai.
+
+    envVars:
+      # ---------- Core ----------
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 8000            # Render internally inject karta hai bhi — dono theek
+      - key: HOST
+        value: 0.0.0.0
+
+      # ---------- CORS: apne deployed frontend origins yahan daalo ----------
+      # Netlify default: https://<site-name>.netlify.app
+      # Apna site name hone ke baad isko update karein (dashboard se bhi kar sakte hain).
+      - key: CORS_ORIGINS
+        value: https://citysurveillance.netlify.app/
+
+      # ---------- Security: IN DONO KO ZAROOR BADLEIN! ----------
+      # generate:  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: JWT_SECRET
+        generateValue: true    # Render khud strong random value generate karega
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+
+      # ---------- Persistence ----------
+      # Free plan me disk attach NAHI hota — JSON data ephemeral hai
+      # (redeploy par seeds se reset). Persistent chahiye to paid disk lo:
+      #   disks:
+      #     - name: civic-data
+      #       mountPath: /opt/render/project/src/server/data
+      #       sizeGB: 1
+      - key: DATA_DIR
+        value: ./data
+      - key: UPLOADS_DIR
+        value: ./uploads
+
+      # ---------- AI Simulation: production me OFF ----------
+      - key: ALERT_SIMULATION
+        value: "false"
+      - key: ALERT_SIMULATION_INTERVAL_MS
+        value: "25000"
+
+      # ---------- Logging ----------
+      - key: LOG_LEVEL
+        value: info
