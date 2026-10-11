@@ -72,7 +72,7 @@ app.use((req, res) => {
 });
 
 /* Error handler */
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({ detail: "Origin not allowed" });
   }
