@@ -1,7 +1,6 @@
 import { Router } from "express";
-import crypto from "crypto";
-import { authenticate, requirePermission, optionalAuth } from "../middleware/auth.js";
-import { findIn, updateIn, getCollection } from "../store.js";
+import { optionalAuth } from "../middleware/auth.js";
+import { getCollection } from "../store.js";
 import { broadcast } from "../realtime.js";
 
 const router = Router();
