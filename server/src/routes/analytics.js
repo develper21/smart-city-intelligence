@@ -1,6 +1,5 @@
 import { Router } from "express";
-import { authenticate, requireRole } from "../middleware/auth.js";
-import { getCollection, findIn, updateIn } from "../store.js";
+import { getCollection } from "../store.js";
 
 const router = Router();
 
