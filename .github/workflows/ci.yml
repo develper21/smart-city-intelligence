@@ -1,0 +1,50 @@
+name: CI - Pipeline
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Install, lint, test, and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix server
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Lint backend
+        run: npm run lint --prefix server
+
+      - name: Test frontend
+        run: npm test
+
+      - name: Test backend
+        run: npm test --prefix server
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build backend
+        run: npm run build --prefix server
