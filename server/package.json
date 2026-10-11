@@ -12,6 +12,7 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "build": "echo 'Express server — no compile step required' && exit 0",
+    "lint": "eslint src tests",
     "test": "node --test tests/server.test.js"
   },
   "dependencies": {
@@ -24,5 +25,10 @@
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.39.2",
+    "globals": "^15.15.0"
   }
 }
