@@ -1,11 +1,10 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
 import crypto from "crypto";
 import config from "../config.js";
 import { authenticate } from "../middleware/auth.js";
-import { getCollection, updateIn, findIn } from "../store.js";
+import { updateIn, findIn } from "../store.js";
 import { broadcast, createAlert } from "../realtime.js";
 import { logger } from "../middleware/logger.js";
 
