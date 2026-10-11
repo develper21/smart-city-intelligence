@@ -8,8 +8,8 @@ This document contains the complete list of tasks for building the CIVIC-AI appl
 
 | 📊 Total Tasks | ✔ Completed | 🔄 In Progress |
 |---|---|---|
-| **40** | **36** | **3** |
-| 90% | 90% | 7.5% |
+| **46** | **44** | **1** |
+| across 9 phases | 96% done | 2% active |
 
 > 1 task intentionally moved to a future phase (deferred, not in progress).
 
@@ -44,14 +44,14 @@ Build the app shell, navigation and route map.
 Build the Express REST + WebSocket backend.
 
 | # | Task | Priority | Status | Notes |
-|---|---|---|   -   | Notes |
+|---|---|---|---|---|
 | 3.1 | Express app + middleware (helmet, cors, morgan) | High | ✅ Completed | server/index.js |
 | 3.2 | JSON file store with atomic writes | High | ✅ Completed | tmp + rename |
 | 3.3 | Auth routes (login, register, refresh, logout, me) | High | ✅ Completed | JWT access+refresh |
 | 3.4 | RBAC middleware (requireRole / requirePermission) | High | ✅ Completed | 3 roles |
 | 3.5 | Cameras, alerts, analytics, streams routes | High | ✅ Completed | Full CRUD |
 | 3.6 | Settings + system-status + health routes | Medium | ✅ Completed | Public GET settings |
-| 3.7 | WebSocket server (/ws) + realtime broadcasts | High | 8 event types | Realtime.js |
+| 3.7 | WebSocket server (/ws) + realtime broadcasts | High | ✅ Completed | 8 event types (realtime.js) |
 | 3.8 | Server test suite | High | ✅ Completed | 20/20 passing |
 
 ## 📻 Phase 4: Authentication & RBAC UI
@@ -59,11 +59,11 @@ Build the Express REST + WebSocket backend.
 Wire the frontend to the backend auth system.
 
 | # | Task | Priority | Status | Notes |
-|-|---|---|---|---|
+|---|---|---|---|---|
 | 4.1 | Login page with demo accounts | High | ✅ Completed | admin/supervisor/operator |
 | 4.2 | Signup page | High | ✅ Completed | Badge ID + role select |
 | 4.3 | AuthContext (JWT restore + refresh) | High | ✅ Completed | Single-flight refresh |
-| 4.4 | Protected routes by role | High | ✅ ProtectedRoute | 3-tier RBAC |
+| 4.4 | Protected routes by role | High | ✅ Completed | ProtectedRoute + 3-tier RBAC |
 
 ## 🖥️ Phase 5: Core Pages
 
