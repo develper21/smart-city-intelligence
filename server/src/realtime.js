@@ -1,5 +1,4 @@
 import { WebSocketServer } from "ws";
-import crypto from "crypto";
 import config from "./config.js";
 import { logger } from "./middleware/logger.js";
 import { getCollection, insert, updateIn, nextId, findIn } from "./store.js";
