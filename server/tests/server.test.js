@@ -32,7 +32,9 @@ async function req(method, url, { body, auth, headers } = {}) {
   let json = null;
   try {
     json = await res.json();
-  } catch {}
+  } catch {
+    json = null;
+  }
   return { status: res.status, json };
 }
 
@@ -73,13 +75,20 @@ describe("Health & System", () => {
 });
 
 describe("Auth", () => {
+  it("rejects login requests without credentials", async () => {
+    const r = await req("POST", "/api/auth/login", { body: { username: "admin" } });
+    assert.equal(r.status, 422);
+  });
+
   it("login with valid credentials returns tokens", async () => {
     const r = await req("POST", "/api/auth/login", {
       body: { email: "rajesh.k@command.smartcity.gov", password: "operator123" },
     });
     assert.equal(r.status, 200);
     assert.ok(r.json.access_token);
+    assert.ok(r.json.refresh_token);
     assert.equal(r.json.user.role, "operator");
+    assert.equal("passwordHash" in r.json.user, false);
   });
 
   it("login with bad password returns 401", async () => {
@@ -106,6 +115,28 @@ describe("Auth", () => {
     });
     assert.equal(r.status, 200);
     assert.ok(r.json.access_token);
+  });
+
+  it("rejects invalid refresh tokens", async () => {
+    const r = await req("POST", "/api/auth/refresh", {
+      body: { refresh_token: "not-a-refresh-token" },
+    });
+    assert.equal(r.status, 401);
+  });
+
+  it("does not allow profile updates to change role or permissions", async () => {
+    const login = await req("POST", "/api/auth/login", {
+      body: { username: "operator", password: "operator123" },
+    });
+    const saved = token;
+    token = login.json.access_token;
+    const r = await req("PUT", "/api/auth/me", {
+      auth: true,
+      body: { role: "admin", permissions: ["manage_cameras"] },
+    });
+    token = saved;
+    assert.equal(r.status, 200);
+    assert.equal(r.json.role, "operator");
   });
 });
 
